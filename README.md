@@ -55,3 +55,13 @@ Alternatively, you can also format entire directories of source files by giving 
 
 In order to bring all source files into the correct format, simply run `black .` from the root of this repository.
 
+
+## Running tests
+
+In order to run the test cases, make sure that you have set up the `koehnlab` package. Afterwards, simply run `python3 -m unittest` from the
+repository's root, which will run all available test cases.
+
+You should always run all test cases before checking in any changes that you made into git. **If the tests fail, don't check your changes in**!
+Passing tests should always be an essential requirement for checking in any changes. If there are failing tests, then you broke something with your
+changes!
+

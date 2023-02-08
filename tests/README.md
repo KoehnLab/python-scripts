@@ -8,3 +8,10 @@ required).
 
 Please see the existing test cases and the respective `unittest` documentation for how test cases can be written.
 
+
+## File naming
+
+In order to make tests automatically discoverable by a call to `python3 -m unittest` from the repository's root, all files implementing test cases
+must start with `test_` and must only contain letters, digits and underscores. In particular whitespace and dashes ("-") are not allowed due to the
+way automatically running all test cases works.
+

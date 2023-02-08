@@ -5,7 +5,7 @@ import unittest
 from koehnlab.finite_differences import forward_difference, central_difference
 
 
-class FiniteDifferenceTest(unittest.TestCase):
+class TestFiniteDifference(unittest.TestCase):
     def test_forward_difference(self):
         self.assertAlmostEqual(forward_difference([1, 2], 0.5), 2)
 
