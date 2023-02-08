@@ -35,11 +35,11 @@ def say_hello():
 
 def main():
     # Everything that is not a function or class definition, should only be performed
-	# inside functions.
-	# This main function will be the entry point of your script
+    # inside functions.
+    # This main function will be the entry point of your script
     print("Starting program execution")
 
-	say_hello()
+    say_hello()
 
 if __name__ == "__main__":
     main()

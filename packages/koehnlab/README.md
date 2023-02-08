@@ -10,7 +10,7 @@ def main():
     # Code that should be run, when executing the file directly
 
 if __name__ == "__main__":
-	# Call main() function only, if this file was executed directly (instead of only being imported)
+    # Call main() function only, if this file was executed directly (instead of only being imported)
     main()
 ```
 
