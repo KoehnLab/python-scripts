@@ -2,7 +2,7 @@
 
 import unittest
 
-from koehnlab.finite_differences import forward_difference, central_difference
+from koehnlab.finite_differences import central_difference, forward_difference
 
 
 class TestFiniteDifference(unittest.TestCase):
