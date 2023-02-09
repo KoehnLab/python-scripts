@@ -1,4 +1,5 @@
-from typing import Any
+from typing import Any, Optional, Tuple
+
 from collections.abc import Sequence
 import copy
 
@@ -138,3 +139,49 @@ def central_difference(values: Sequence[float], delta: float) -> float:
     else:
         # 4-point formula
         return (values[0] - 8 * values[1] + 8 * values[2] - values[3]) / (12 * delta)
+
+
+def approximate_derivative(
+    points: Optional[Sequence[Tuple[float, float]]] = None,
+    x_values: Optional[Sequence[float]] = None,
+    y_values: Optional[Sequence[float]] = None,
+    order: int = 1,
+    x0: float = 0,
+) -> float:
+    """Approximates the derivative of given order at the given position x0 by means of the finite differences
+    method. The provided grid points may be spaced arbitrarily and are free to either contain a value for x0
+    or not. An order of zero corresponds to an interpolation (or extraplolation) of the function to the
+    provided location"""
+    if not points is None:
+        if not x_values is None or not y_values is None:
+            raise RuntimeError(
+                "Arguments 'points' and ('x_values' & 'y_values') are mutually exclusive"
+            )
+
+        x_values = []
+        y_values = []
+        for x, y in points:
+            x_values.append(x)
+            y_values.append(y)
+
+    if x_values is None or y_values is None:
+        raise RuntimeError(
+            "Argument 'points' or ('x_values' and 'y_values') are mandatory"
+        )
+
+    if len(x_values) != len(y_values):
+        raise RuntimeError(
+            "The size of the provided 'x_values' and 'y_values' sequences must be equal"
+        )
+
+    weights = generate_finite_difference_coefficients(
+        x0=x0, x_values=x_values, order=order
+    )
+
+    assert len(weights) == len(y_values)
+
+    derivative = 0
+    for i in range(len(y_values)):
+        derivative += weights[i] * y_values[i]
+
+    return derivative

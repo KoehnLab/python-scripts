@@ -6,6 +6,7 @@ from typing import Tuple
 from collections.abc import Sequence
 
 from koehnlab.finite_differences import (
+    approximate_derivative,
     central_difference,
     forward_difference,
     generate_finite_difference_coefficients,
@@ -30,8 +31,8 @@ class TestFiniteDifference(unittest.TestCase):
 
         return points
 
-    def straight_line_slope(self) -> float:
-        return 0.5
+    def straight_line_derivative(self, order: int = 1) -> float:
+        return 0.5 if order == 1 else 0
 
     def parabola(
         self, locations: Sequence[float] = [-1, 0, 1], offset: float = 0
@@ -42,49 +43,54 @@ class TestFiniteDifference(unittest.TestCase):
 
         return points
 
-    def parabola_slope(self, at: float = 0) -> float:
-        return 2 * -1.75 * at + 0.5
+    def parabola_derivative(self, at: float = 0, order: int = 1) -> float:
+        if order == 1:
+            return 2 * -1.75 * at + 0.5
+        elif order == 2:
+            return 2 * -1.75
+        else:
+            return 0
 
     def test_forward_difference(self):
         self.assertAlmostEqual(
             forward_difference(self.straigh_line(locations=[1, 1.5]), 0.5),
-            self.straight_line_slope(),
+            self.straight_line_derivative(),
         )
 
         self.assertAlmostEqual(
             forward_difference(
                 self.straigh_line(locations=[-12, -11.5], offset=3), 0.5
             ),
-            self.straight_line_slope(),
+            self.straight_line_derivative(),
         )
 
     def test_central_difference(self):
         # Straight line
         self.assertAlmostEqual(
             central_difference(self.straigh_line(locations=[-12, -11], offset=3), 0.5),
-            self.straight_line_slope(),
+            self.straight_line_derivative(),
         )
         self.assertAlmostEqual(
             central_difference(self.straigh_line(locations=[1, 2], offset=-7), 0.5),
-            self.straight_line_slope(),
+            self.straight_line_derivative(),
         )
         self.assertAlmostEqual(
             central_difference(
                 self.straigh_line(locations=[0.5, 1, 2, 2.5], offset=0.1), 0.5
             ),
-            self.straight_line_slope(),
+            self.straight_line_derivative(),
         )
 
         # Parabola
         self.assertAlmostEqual(
             central_difference(self.parabola(locations=[1, 2], offset=0.1), 0.5),
-            self.parabola_slope(at=1.5),
+            self.parabola_derivative(at=1.5),
         )
         self.assertAlmostEqual(
             central_difference(
                 self.parabola(locations=[0.5, 1, 2, 2.5], offset=-42), 0.5
             ),
-            self.parabola_slope(at=1.5),
+            self.parabola_derivative(at=1.5),
         )
 
     def test_generate_finite_difference_coefficients(self):
@@ -203,6 +209,32 @@ class TestFiniteDifference(unittest.TestCase):
                     ),
                     expected_coefficients,
                 )
+
+    def test_approximate_derivative(self):
+        for order in [1, 2, 3]:
+            for location in [-4, 0, 12]:
+                with self.subTest(order=order, location=location):
+                    x_values = [-4, -3.8, -3.4, -3.1, -2.5]
+
+                    # Straight line
+                    y_values = self.straigh_line(locations=x_values, offset=-8)
+
+                    derivative = approximate_derivative(
+                        x_values=x_values, y_values=y_values, x0=location, order=order
+                    )
+                    self.assertAlmostEqual(
+                        derivative, self.straight_line_derivative(order=order)
+                    )
+
+                    # Parabola
+                    y_values = self.parabola(locations=x_values, offset=12)
+
+                    derivative = approximate_derivative(
+                        x_values=x_values, y_values=y_values, x0=location, order=order
+                    )
+                    self.assertAlmostEqual(
+                        derivative, self.parabola_derivative(at=location, order=order)
+                    )
 
 
 if __name__ == "__main__":
