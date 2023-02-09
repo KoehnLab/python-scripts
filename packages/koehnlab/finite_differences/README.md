@@ -1,4 +1,4 @@
-# finite\_differences.py
+# finite\_differences
 
 This sub-package implements functionality related to the method of approximating a derivative via
 [finite difference](https://en.wikipedia.org/wiki/Finite_difference).
