@@ -3,6 +3,7 @@
 import unittest
 
 from typing import Tuple
+from collections.abc import Sequence
 
 from koehnlab.finite_differences import (
     central_difference,
@@ -20,26 +21,71 @@ class TestFiniteDifference(unittest.TestCase):
                 first[i], second[i], places=places, msg=msg, delta=delta
             )
 
+    def straigh_line(
+        self, locations: Sequence[float] = [0, 1], offset: float = 0
+    ) -> list[float]:
+        points: list[float] = []
+        for x in locations:
+            points.append(0.5 * x + offset)
+
+        return points
+
+    def straight_line_slope(self) -> float:
+        return 0.5
+
+    def parabola(
+        self, locations: Sequence[float] = [-1, 0, 1], offset: float = 0
+    ) -> list[float]:
+        points: list[float] = []
+        for x in locations:
+            points.append(-1.75 * (x**2) + 0.5 * x + offset)
+
+        return points
+
+    def parabola_slope(self, at: float = 0) -> float:
+        return 2 * -1.75 * at + 0.5
+
     def test_forward_difference(self):
-        self.assertAlmostEqual(forward_difference([1, 2], 0.5), 2)
+        self.assertAlmostEqual(
+            forward_difference(self.straigh_line(locations=[1, 1.5]), 0.5),
+            self.straight_line_slope(),
+        )
+
+        self.assertAlmostEqual(
+            forward_difference(
+                self.straigh_line(locations=[-12, -11.5], offset=3), 0.5
+            ),
+            self.straight_line_slope(),
+        )
 
     def test_central_difference(self):
-        # Assume straight line with y = x
-        self.assertAlmostEqual(central_difference([1, 2], 0.5), 1)
-        self.assertAlmostEqual(central_difference([0, 0.5, 1.5, 2], 0.5), 1)
+        # Straight line
+        self.assertAlmostEqual(
+            central_difference(self.straigh_line(locations=[-12, -11], offset=3), 0.5),
+            self.straight_line_slope(),
+        )
+        self.assertAlmostEqual(
+            central_difference(self.straigh_line(locations=[1, 2], offset=-7), 0.5),
+            self.straight_line_slope(),
+        )
+        self.assertAlmostEqual(
+            central_difference(
+                self.straigh_line(locations=[0.5, 1, 2, 2.5], offset=0.1), 0.5
+            ),
+            self.straight_line_slope(),
+        )
 
-        # Assume y = x + 5
-        self.assertAlmostEqual(central_difference([6, 7], 0.5), 1)
-        self.assertAlmostEqual(central_difference([5, 5.5, 6.5, 7], 0.5), 1)
-
-        # Assume y = x**2 + 1
-        # Evaluate slope at origin
-        self.assertAlmostEqual(central_difference([1.25, 1.25], 0.5), 0)
-        self.assertAlmostEqual(central_difference([2, 1.25, 1.25, 2], 0.5), 0)
-
-        # Evaluate slope at x = 1
-        self.assertAlmostEqual(central_difference([1.25, 3.25], 0.5), 2)
-        self.assertAlmostEqual(central_difference([1, 1.25, 3.25, 5], 0.5), 2)
+        # Parabola
+        self.assertAlmostEqual(
+            central_difference(self.parabola(locations=[1, 2], offset=0.1), 0.5),
+            self.parabola_slope(at=1.5),
+        )
+        self.assertAlmostEqual(
+            central_difference(
+                self.parabola(locations=[0.5, 1, 2, 2.5], offset=-42), 0.5
+            ),
+            self.parabola_slope(at=1.5),
+        )
 
     def test_generate_finite_difference_coefficients(self):
         # The test data is taken from the tables in
