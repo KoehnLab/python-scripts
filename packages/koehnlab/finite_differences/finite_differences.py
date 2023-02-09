@@ -150,7 +150,7 @@ def approximate_derivative(
 ) -> float:
     """Approximates the derivative of given order at the given position x0 by means of the finite differences
     method. The provided grid points may be spaced arbitrarily and are free to either contain a value for x0
-    or not. An order of zero corresponds to an interpolation (or extraplolation) of the function to the
+    or not. An order of zero corresponds to an interpolation (or extrapolation) of the function to the
     provided location"""
     if not points is None:
         if not x_values is None or not y_values is None:
