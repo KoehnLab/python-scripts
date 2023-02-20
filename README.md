@@ -34,6 +34,9 @@ print(finite_differences.forward_difference([1,2], 0.5))
 
 ## Making scripts available
 
+Before anything else, ensure that you have the required dependencies installed on your system. In order to ensure that, simply run
+`pip3 install -r requirements.txt` from the root of this repository.
+
 In order to make the provided scripts immediately accessible from your shell, you have to add the `scripts` directory to your `PATH` environment
 variable. Assuming you have cloned this repository under `~/Git/python-scripts`, you'll have to add the following entry to your `.bashrc`:
 ```bash
@@ -42,6 +45,16 @@ export PATH="$HOME/Git/python-scripts/scripts/:$PATH"
 After executing `source ~/.bashrc`, you can execute all scripts inside `scripts` simply by using their name from anywhere on your system. E.g. simply
 typing `my_script.py` in the console will execute `scripts/my_script.py` (provided that script exists and there is no other entry inside your `PATH`
 that matches this name).
+
+
+## Package dependencies
+
+Try to limit the dependencies on external Python package to a minimum. Especially when contributing to one of the packages contained in this
+repository as that dependency has to be fulfilled by all users of that package, even if they don't use that specific sub-module that has this
+dependency.
+
+All dependencies are listed in the `requirements.txt` file and can be installed in one go via `pip3 install -r requirements.txt`. If you add a new
+dependency, ensure to add the respective package name to this file.
 
 
 ## Formatting
