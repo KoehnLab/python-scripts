@@ -1,6 +1,5 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
-from collections.abc import Sequence
 import copy
 
 

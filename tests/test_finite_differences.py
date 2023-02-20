@@ -2,8 +2,7 @@
 
 import unittest
 
-from typing import Tuple
-from collections.abc import Sequence
+from typing import List, Sequence, Tuple
 
 from koehnlab.finite_differences import (
     approximate_derivative,
@@ -24,7 +23,7 @@ class TestFiniteDifference(unittest.TestCase):
 
     def straigh_line(
         self, locations: Sequence[float] = [0, 1], offset: float = 0
-    ) -> list[float]:
+    ) -> List[float]:
         points: list[float] = []
         for x in locations:
             points.append(0.5 * x + offset)
@@ -36,7 +35,7 @@ class TestFiniteDifference(unittest.TestCase):
 
     def parabola(
         self, locations: Sequence[float] = [-1, 0, 1], offset: float = 0
-    ) -> list[float]:
+    ) -> List[float]:
         points: list[float] = []
         for x in locations:
             points.append(-1.75 * (x**2) + 0.5 * x + offset)
