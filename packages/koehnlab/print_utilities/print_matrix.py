@@ -2,12 +2,12 @@
 
 
 def printMatC(mat, formatstr="7.2f", maxcol=10, put_labels=True, triangle=False):
-    """ Print a matrix of complex values
-       mat        --  a matrix (as exception also a vector is accepted)
-       formatstr  -- format the real and imaginary part using this format (valid python format required)
-       maxcol     -- max. number of columns in each output batch
-       put_labels -- output the labels for rows and columns 
-       triangle   -- only output the (lower) triangle
+    """Print a matrix of complex values
+    mat        --  a matrix (as exception also a vector is accepted)
+    formatstr  -- format the real and imaginary part using this format (valid python format required)
+    maxcol     -- max. number of columns in each output batch
+    put_labels -- output the labels for rows and columns
+    triangle   -- only output the (lower) triangle
     """
 
     d1 = mat.shape[0]
@@ -45,12 +45,12 @@ def printMatC(mat, formatstr="7.2f", maxcol=10, put_labels=True, triangle=False)
 
 
 def printMatF(mat, formatstr="12.6f", maxcol=10, put_labels=True, triangle=False):
-    """ Print a matrix of float values
-       mat        --  a matrix (as exception also a vector is accepted)
-       formatstr  -- format the real and imaginary part using this format (valid python format required)
-       maxcol     -- max. number of columns in each output batch
-       put_labels -- output the labels for rows and columns 
-       triangle   -- only output the (lower) triangle
+    """Print a matrix of float values
+    mat        --  a matrix (as exception also a vector is accepted)
+    formatstr  -- format the real and imaginary part using this format (valid python format required)
+    maxcol     -- max. number of columns in each output batch
+    put_labels -- output the labels for rows and columns
+    triangle   -- only output the (lower) triangle
     """
 
     d1 = mat.shape[0]

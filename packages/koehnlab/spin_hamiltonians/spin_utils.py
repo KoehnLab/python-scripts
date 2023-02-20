@@ -44,7 +44,7 @@ def unit(nd):
 
 
 def tprod(A, B):
-    """ return the tensor product of matrices A and B """
+    """return the tensor product of matrices A and B"""
     """ our own definition of a tensor product """
     ldij = B.shape[0]
     ldkl = B.shape[1]
@@ -60,7 +60,7 @@ def tprod(A, B):
 
 
 def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
-    """ diagonalize Spin Hamiltonian for Bfield and compute expectation values """
+    """diagonalize Spin Hamiltonian for Bfield and compute expectation values"""
     """ Hmat in cm-1, Mmat in Bohr magnetons, Bfield (x,y,z) in Tesla  """
 
     HmatD = np.array(Hmat)
