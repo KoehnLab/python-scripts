@@ -5,7 +5,7 @@ from .phys_const import kBcm
 
 
 def getBoltzmannFactors(Elevels, Temp):
-    """ compute the Boltzmann factors for all levels on Elevels (cm-1) for Temperature Temp (K) """
+    """compute the Boltzmann factors for all levels on Elevels (cm-1) for Temperature Temp (K)"""
     beta = 1.0 / (kBcm * Temp)
     Factors = np.exp(-Elevels * beta)
 
@@ -13,12 +13,12 @@ def getBoltzmannFactors(Elevels, Temp):
 
 
 def CLorentz(x, dlt):
-    """ correlation function for Lorentz line shape """
+    """correlation function for Lorentz line shape"""
     cl = 4.0 * np.exp(-dlt * x)
     return cl
 
 
 def CGauss(x, sig):
-    """ correlation function for Gauss line shape """
+    """correlation function for Gauss line shape"""
     cg = 4.0 * np.exp(-0.5 * x * x * sig * sig)
     return cg

@@ -4,7 +4,7 @@ from .phys_const import kBcm, ChiVVCGS
 
 
 def getChiVV(En, MmatT, fBoltz, T):
-    """ compute chi*T by the van Vleck equation """
+    """compute chi*T by the van Vleck equation"""
     """ the chi() subroutine of Chibutaru and Ungur (SINGLE_ANISO) is acknowledged
         for inspiration and debugging of prefactors """
 
