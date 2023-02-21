@@ -36,27 +36,33 @@ def spinMat(S, cmp):
 
 
 def unit(nd):
-    """return a unit matrix of dimension nd"""
-    unit = np.zeros((nd, nd), dtype=complex)
-    for ii in range(nd):
-        unit[ii, ii] = 1.0
-    return unit
+    """return a (complex type) unit matrix of dimension nd"""
+    return np.identity(nd, dtype=complex)
+
+#    unit = np.zeros((nd, nd), dtype=complex)
+#    for ii in range(nd):
+#        unit[ii, ii] = 1.0
+#    return unit
 
 
 def tprod(A, B):
     """return the tensor product of matrices A and B"""
     """ our own definition of a tensor product """
-    ldij = B.shape[0]
-    ldkl = B.shape[1]
-    AB = np.zeros((A.shape[0] * B.shape[0], A.shape[1] * B.shape[1]), dtype=A.dtype)
-    for idx in range(A.shape[0]):
-        for jdx in range(B.shape[0]):
-            ijdx = ldij * idx + jdx
-            for kdx in range(A.shape[1]):
-                for ldx in range(B.shape[1]):
-                    kldx = ldkl * kdx + ldx
-                    AB[ijdx, kldx] = A[idx, kdx] * B[jdx, ldx]
-    return AB
+    # obviously this already existed (keep this wrapper for compatibility):
+    return np.kron(A,B)
+
+# this is an explicit code of what kron does for 2D matrices:
+#    ldij = B.shape[0]
+#    ldkl = B.shape[1]
+#    AB = np.zeros((A.shape[0] * B.shape[0], A.shape[1] * B.shape[1]), dtype=A.dtype)
+#    for idx in range(A.shape[0]):
+#        for jdx in range(B.shape[0]):
+#            ijdx = ldij * idx + jdx
+#            for kdx in range(A.shape[1]):
+#                for ldx in range(B.shape[1]):
+#                    kldx = ldkl * kdx + ldx
+#                    AB[ijdx, kldx] = A[idx, kdx] * B[jdx, ldx]
+#    return AB
 
 
 def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
