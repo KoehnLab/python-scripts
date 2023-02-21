@@ -27,9 +27,9 @@ class TestFiniteDifference(unittest.TestCase):
                     [0.0, -isq2 * 1j, 0.0],
                     [isq2 * 1j, 0.0, -isq2 * 1j],
                     [0.0, isq2 * 1j, 0.0],
-                ]
+                ],
+                dtype=complex,
             ),
-            dtype=complex,
         )
         sq2j = np.sqrt(2.0) * 1j
         sq5hj = np.sqrt(5.0) / 2.0 * 1j
@@ -43,9 +43,9 @@ class TestFiniteDifference(unittest.TestCase):
                     [0.0, 0.0, 1.5j, 0.0, -sq2j, 0.0],
                     [0.0, 0.0, 0.0, sq2j, 0.0, -sq5hj],
                     [0.0, 0.0, 0.0, 0.0, sq5hj, 0.0],
-                ]
+                ],
+                dtype=complex,
             ),
-            dtype=complex,
         )
         assert_array_almost_equal(
             spinMat(5 / 2, "z"), np.diag([5 / 2, 3 / 2, 1 / 2, -1 / 2, -3 / 2, -5 / 2])
