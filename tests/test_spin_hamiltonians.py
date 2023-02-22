@@ -3,8 +3,6 @@
 import unittest
 from koehnlab.spin_hamiltonians.spin_utils import diagonalizeSpinHamiltonian
 
-# from typing import List, Sequence, Tuple
-
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 
