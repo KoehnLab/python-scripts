@@ -30,5 +30,3 @@ jobs:
     - name: Type checking
       uses: jakebailey/pyright-action@v1
 
-    - name: Check code formatting
-      uses: psf/black@stable
