@@ -39,10 +39,6 @@ def unit(nd):
     """return a (complex type) unit matrix of dimension nd"""
     return np.identity(nd, dtype=complex)
 
-#    unit = np.zeros((nd, nd), dtype=complex)
-#    for ii in range(nd):
-#        unit[ii, ii] = 1.0
-#    return unit
 
 
 def tprod(A, B):
