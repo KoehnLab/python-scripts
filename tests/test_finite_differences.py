@@ -38,7 +38,7 @@ class TestFiniteDifference(unittest.TestCase):
     ) -> List[float]:
         points: list[float] = []
         for x in locations:
-            points.append(-1.75 * (x**2) + 0.5 * x + offset)
+            points.append(-1.75 * (x ** 2) + 0.5 * x + offset)
 
         return points
 
