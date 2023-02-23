@@ -74,9 +74,10 @@ def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
     En, U = np.linalg.eigh(HmatD)
 
     if Mmat is not None:
-        # loop across energies; for degenerate tuples diagonalize Mmat[3] expectation values in that block
+        # loop across energies; for degenerate tuples diagonalize Mmat[2] expectation values in that block
         idxst = 0
         idxnd = 0
+        Mtraf = np.matmul(np.conj(U.T),np.matmul(Mmat[2],U))
         ndim = En.shape[0]
         while idxst < ndim:
             ndim_block = 0
@@ -87,7 +88,7 @@ def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
                 ndim_block += 1
             idxnd = idxst + ndim_block
             # print("current block: ",idxst,idxnd-1)
-            submat = np.array(Mmat[2][idxst:idxnd, idxst:idxnd])
+            submat = np.array(Mtraf[idxst:idxnd, idxst:idxnd])
             # printMatC(submat)
             # print()
             # diagonalize submatrix
