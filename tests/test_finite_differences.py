@@ -21,7 +21,7 @@ class TestFiniteDifference(unittest.TestCase):
                 first[i], second[i], places=places, msg=msg, delta=delta
             )
 
-    def straigh_line(
+    def straight_line(
         self, locations: Sequence[float] = [0, 1], offset: float = 0
     ) -> List[float]:
         points: list[float] = []
@@ -38,7 +38,7 @@ class TestFiniteDifference(unittest.TestCase):
     ) -> List[float]:
         points: list[float] = []
         for x in locations:
-            points.append(-1.75 * (x ** 2) + 0.5 * x + offset)
+            points.append(-1.75 * (x**2) + 0.5 * x + offset)
 
         return points
 
@@ -52,13 +52,13 @@ class TestFiniteDifference(unittest.TestCase):
 
     def test_forward_difference(self):
         self.assertAlmostEqual(
-            forward_difference(self.straigh_line(locations=[1, 1.5]), 0.5),
+            forward_difference(self.straight_line(locations=[1, 1.5]), 0.5),
             self.straight_line_derivative(),
         )
 
         self.assertAlmostEqual(
             forward_difference(
-                self.straigh_line(locations=[-12, -11.5], offset=3), 0.5
+                self.straight_line(locations=[-12, -11.5], offset=3), 0.5
             ),
             self.straight_line_derivative(),
         )
@@ -66,16 +66,16 @@ class TestFiniteDifference(unittest.TestCase):
     def test_central_difference(self):
         # Straight line
         self.assertAlmostEqual(
-            central_difference(self.straigh_line(locations=[-12, -11], offset=3), 0.5),
+            central_difference(self.straight_line(locations=[-12, -11], offset=3), 0.5),
             self.straight_line_derivative(),
         )
         self.assertAlmostEqual(
-            central_difference(self.straigh_line(locations=[1, 2], offset=-7), 0.5),
+            central_difference(self.straight_line(locations=[1, 2], offset=-7), 0.5),
             self.straight_line_derivative(),
         )
         self.assertAlmostEqual(
             central_difference(
-                self.straigh_line(locations=[0.5, 1, 2, 2.5], offset=0.1), 0.5
+                self.straight_line(locations=[0.5, 1, 2, 2.5], offset=0.1), 0.5
             ),
             self.straight_line_derivative(),
         )
@@ -216,7 +216,7 @@ class TestFiniteDifference(unittest.TestCase):
                     x_values = [-4, -3.8, -3.4, -3.1, -2.5]
 
                     # Straight line
-                    y_values = self.straigh_line(locations=x_values, offset=-8)
+                    y_values = self.straight_line(locations=x_values, offset=-8)
 
                     derivative = approximate_derivative(
                         x_values=x_values, y_values=y_values, x0=location, order=order
