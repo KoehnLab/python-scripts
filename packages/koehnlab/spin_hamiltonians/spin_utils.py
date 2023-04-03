@@ -4,35 +4,47 @@ from .phys_const import muBcm
 """ A set of routines for setting up spin Hamiltonians  """
 
 
-def spinMat(S, cmp):
-    """return matrix elemts of operator S_cmp for spin quantum number S"""
-    d = int(2 * S + 1)
-    Smat = np.zeros((d, d), dtype=complex)
-    if cmp == "Z" or cmp == "z":
-        Ms = float(S)
-        for ii in range(d):
-            Smat[ii, ii] = Ms
+def spinMat(S: float, cmp: str):
+    """Return matrix elements of operator S_i (with i == cmp) for spin quantum number S
+    (in multiples of hbar)"""
+    multiplicity = int(2 * S + 1)
+
+    assert S - int(S) in [0, 0.5], "Spin can only take on half-integer numbers"
+
+    if cmp.lower() == "z":
+        # The S_z matrix is a diagonal matrix that contains the possible Ms values
+        # on its diagonal (in descending order)
+        return np.diag(np.linspace(start=+S, stop=-S, num=multiplicity))
+    elif cmp.lower() == "x":
+        # S_x is expressed in terms of ladder operators:
+        # S_x = 0.5 * (S_+ + S_-)
+        # Because of the ladder operators, the entries appear on the off-diagonal
+        Smat = np.zeros((multiplicity, multiplicity), dtype=complex)
+        Ms = S
+        SS1 = S * (S + 1)
+        for ii in range(multiplicity - 1):  # we run over column
+            val = 0.5 * np.sqrt(SS1 - Ms * (Ms - 1))
+            Smat[ii + 1, ii] = val
+            Smat[ii, ii + 1] = val
             Ms -= 1.0
-    elif cmp == "X" or cmp == "x":
-        Ms = float(S)
-        SS1 = float(S) * (float(S) + 1.0)
-        for ii in range(d - 1):  # we run over column
-            val = np.sqrt(SS1 - Ms * (Ms - 1))
-            Smat[ii + 1, ii] = 0.5 * val
-            Smat[ii, ii + 1] = 0.5 * val
-            Ms -= 1.0
-    elif cmp == "Y" or cmp == "y":
-        Ms = float(S)
-        SS1 = float(S) * (float(S) + 1.0)
-        for ii in range(d - 1):  # we run over column
+
+        return Smat
+    elif cmp.lower() == "y":
+        # S_y is expressed in terms of ladder operators:
+        # S_y = -i/2 * (S_+ - S_-)
+        # Because of the ladder operators, the entries appear on the off-diagonal
+        Smat = np.zeros((multiplicity, multiplicity), dtype=complex)
+        Ms = S
+        SS1 = S * (S + 1)
+        for ii in range(multiplicity - 1):  # we run over column
             val = np.sqrt(SS1 - Ms * (Ms - 1))
             Smat[ii + 1, ii] = 0.5j * val
             Smat[ii, ii + 1] = -0.5j * val
             Ms -= 1.0
-    else:
-        print("unknown cmp: ", cmp)
 
-    return Smat
+        return Smat
+
+    raise RuntimeError("Unknown spin operator component '" + str(cmp) + "'")
 
 
 def unit(nd):
