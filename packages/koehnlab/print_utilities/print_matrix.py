@@ -1,9 +1,10 @@
 # a few convenient output routines
 
-from typing import Optional, Type, Any
+from typing import Optional, Type, Any, TextIO
 
 import math
 import numpy as np
+import sys
 
 
 def getFormatWidth(fmt: str) -> int:
@@ -18,6 +19,7 @@ def printMat(
     useLabels: bool = True,
     triangle: bool = False,
     dtype: Optional[Type[Any]] = None,
+    file: TextIO = sys.stdout
 ) -> None:
     """Print the entries of the given matrix (or vector) in a easily readable format
     matrix      --  Matrix or vector to print
@@ -26,6 +28,7 @@ def printMat(
     useLabels   -- Whether rows and columns should be labeled explicitly
     triangle    -- Only output the (lower) triangle of the matrix
     dtype       -- The type as which to print the matrix entries (only has effect if not entryFmt is provided)
+    file        -- The file-like object to write to. Defaults to stdout
     """
 
     # Check matrix dimensions
@@ -87,10 +90,10 @@ def printMat(
 
         if useLabels:
             # Print column labels
-            print((" " * (rowLabelWidth + 1)) + "|", end="")
+            print((" " * (rowLabelWidth + 1)) + "|", end="", file=file)
             for col in range(nColsInBatch):
-                print(colLabelFmt.format(batchNum * colsPerLine + col + 1), end="|")
-            print()
+                print(colLabelFmt.format(batchNum * colsPerLine + col + 1), end="|", file=file)
+            print("", file=file)
 
         for row in range(startRow, startRow + nPrintRows):
             # Handle printing only the lower triangle of the matrix
@@ -100,13 +103,13 @@ def printMat(
 
             if useLabels:
                 # Start row with row label
-                print(rowLabelFmt.format(row + 1), end="  ")
+                print(rowLabelFmt.format(row + 1), end="  ", file=file)
 
             for col in range(nPrintCols):
-                print(entryFmt.format(matrix[row][col + colOffset]), end=" ")
+                print(entryFmt.format(matrix[row][col + colOffset]), end=" ", file=file)
 
-            print()
-        print()
+            print("", file=file)
+        print("", file=file)
 
 
 def printMatC(
