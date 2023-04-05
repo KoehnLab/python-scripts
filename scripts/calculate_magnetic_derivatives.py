@@ -474,6 +474,8 @@ def main() -> None:
         equilibriumData, distortedData
     )
 
+    laboratoryToMainAxes = np.linalg.inv(equilibriumData.magneticMainAxes)
+
     # Write out the calculated derivates and also the ones transformed into the system of magnetic main axes (of the equilibrium geometry)
     writeToFile(
         gTensorDerivatives,
@@ -482,7 +484,7 @@ def main() -> None:
     )
 
     gTensorDerivatives = transformToBasis(
-        gTensorDerivatives, basis=equilibriumData.magneticMainAxes
+        gTensorDerivatives, basis=laboratoryToMainAxes
     )
     writeToFile(
         gTensorDerivatives,
@@ -498,7 +500,7 @@ def main() -> None:
         )
 
         DTensorDerivatives = transformToBasis(
-            DTensorDerivatives, basis=equilibriumData.magneticMainAxes
+            DTensorDerivatives, basis=laboratoryToMainAxes
         )
         writeToFile(
             DTensorDerivatives,
@@ -509,7 +511,8 @@ def main() -> None:
     # Also write out magnetic main axes
     with open(os.path.join(args.output_dir, "magnetic_main_axes"), "w") as outputFile:
         print(
-            "# Magnetic main axes (column-wise) of the undistorted molecule",
+            "# Magnetic main axes (column-wise) of the undistorted molecule\n"
+            + "# (the matrix describes the transformation from laboratory to main axes coordinates)",
             file=outputFile,
         )
         print_utilities.printMat(
