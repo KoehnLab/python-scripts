@@ -339,7 +339,7 @@ def transformToBasis(
 
     for current in derivatives:
         assert current.coordinate in [0, 1, 2]
-        xCoef, yCoef, zCoef = basis[:, current.coordinate]
+        xCoef, yCoef, zCoef = basis[current.coordinate, :]
 
         xDeriv = derivatives[indices[current.atomIdx][0]].derivative
         yDeriv = derivatives[indices[current.atomIdx][1]].derivative
