@@ -111,3 +111,64 @@ def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
             idxst = idxnd
 
     return En, U
+
+def getMagneticAxes(mu):
+    """ mu[3,dim,dim] contains the dim x dim representation of the 
+        magnetic moment operator in a given basis, the first dimension
+        runs over X, Y, Z
+        From this, the Gerloch McMeeking tensor is computed
+        on exit, return the main magnetic axes the eigenvalues of the 
+        Gerloch McMeeking tensor """
+
+    Amat = np.zeros((3,3))
+    dim = mu.shape[1]
+
+    for ii in range(3):
+        for jj in range(3):
+            for kk in range(dim):
+                for ll in range(dim):
+                    Amat[ii,jj]=Amat[ii,jj]+0.5*(mu[ii,kk,ll]*mu[jj,ll,kk]).real
+
+    Adia,Rmat = np.linalg.eigh(Amat)
+
+    # evalues are positive and in ascending order
+    if Adia[2]-Adia[1] < Adia[1]-Adia[0]:
+        # oblate case
+        idx0=1
+        idx1=2
+        idx2=0
+    else:
+        # prolate case
+        idx0=0
+        idx1=1
+        idx2=2
+
+    Adia = np.array([Adia[idx0],Adia[idx1],Adia[idx2]])
+    Rmat = np.array([Rmat[:,idx0],Rmat[:,idx1],Rmat[:,idx2]]).T
+
+    # ensure right-handedness:
+    if (np.linalg.det(Rmat)<0.):
+        Rmat = -Rmat
+
+    return Adia,Rmat
+
+
+def A_to_g(Adia,S):
+    """ turn the eigenvalues of the Gerloch McMeeking tensor into g matrix values """
+    """ S is the spin of the (pseudo)spin system """
+    fac = 6./(S*(S+1.)*(2.*S+1.))
+    gdia = np.sqrt(fac*Adia)
+    return gdia
+
+
+def rotateVectorOpMatrix(vec,Rmat):
+    """ vec[3,dim,dim] is a matrix rep of a vector operator 
+        Rmat is a rotation matrix 
+        compute the transformed matrix rep of the vector operator"""
+
+    vecT = np.zeros(vec.shape,dtype=vec.dtype)
+    for ii in range(3):
+        for jj in range(3):
+            vecT[ii] += Rmat[jj,ii]*vec[jj]
+    return vecT
+
