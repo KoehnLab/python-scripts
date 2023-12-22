@@ -81,7 +81,8 @@ def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
 
     if Mmat is not None and Bfield is not None:
         for ii in range(3):
-            HmatD += Bfield[ii] * Mmat[ii] * muBcm
+            # H_Zeeman = - M B
+            HmatD -= Bfield[ii] * Mmat[ii] * muBcm
 
     En, U = np.linalg.eigh(HmatD)
 

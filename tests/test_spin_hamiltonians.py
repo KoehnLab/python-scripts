@@ -79,7 +79,8 @@ class TestFiniteDifference(unittest.TestCase):
             ],
             dtype=complex,
         )
-        MmatX = np.array(
+        # M = - muB g S  --> therefore we add a -1 here
+        MmatX = -np.array(
             [
                 [0.0, sq3, 0.0, 0.0],
                 [sq3, 0.0, 2.0, 0.0],
@@ -89,7 +90,7 @@ class TestFiniteDifference(unittest.TestCase):
             dtype=complex,
         )
         MmatY = (
-            np.array(
+            -np.array(
                 [
                     [0.0, -sq3, 0.0, 0.0],
                     [sq3, 0.0, -2.0, 0.0],
@@ -100,7 +101,7 @@ class TestFiniteDifference(unittest.TestCase):
             )
             * 1j
         )
-        MmatZ = np.diag([3.0, 1.0, -1.0, -3.0])
+        MmatZ = -np.diag([3.0, 1.0, -1.0, -3.0])
 
         ev1, U = diagonalizeSpinHamiltonian(Hmat)
         assert_array_almost_equal(
@@ -112,7 +113,7 @@ class TestFiniteDifference(unittest.TestCase):
         self.assertAlmostEqual(np.abs(MZT[1, 1]), 2.97565832)
         self.assertAlmostEqual(np.abs(MZT[2, 2]), 0.97565832)
         self.assertAlmostEqual(np.abs(MZT[3, 3]), 0.97565832)
-        self.assertAlmostEqual(MZT[0, 2], -0.31108551)
+        self.assertAlmostEqual(MZT[0, 2], 0.31108551)
 
         # test with Zeeman terms:
         ev2, _ = diagonalizeSpinHamiltonian(
