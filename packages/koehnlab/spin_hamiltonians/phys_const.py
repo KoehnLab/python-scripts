@@ -1,5 +1,7 @@
 # some physical constants:
 
+# electron g factor
+ge = 2.00231930436256 
 # Boltzmann constant in cm^-1/K
 kBcm = 0.695034800381
 # atomic units to cm^-1   Eh/(h*c*100)
@@ -10,6 +12,10 @@ au2K = 315775.0248040
 au2T = 470103.513518
 # Bohr magneton in cm-1/T mB/(h*c*100)
 muBcm = 0.466864477756
+# Nuclear magneton in cm-1/T
+muNcm = 0.000254262341353 
+# Nuclear magneton in Bohr magnetons:
+muNbohr = muNcm/muBcm
 # conversion of chi (finite diff): 0.1 * mB * NA
 ChiCGS = 0.5584939410
 # conversion of chi (van Vleck): 0.1 * mB * mB * NA / kB
@@ -18,6 +24,7 @@ ChiVVCGS = 0.37514809612
 cCGS = 29979245800
 
 # 2018 CODATA
+# electron g factor:  ge = 2.002 319 304 362 56(35)  ## actually defined negative
 # Boltzmann constant: kB = 1.380 649 1e-23 J/K
 # Avogadro constant:  NA = 6.022 140 76 1e23
 # speed of light:     c  = 299792458 m/s
