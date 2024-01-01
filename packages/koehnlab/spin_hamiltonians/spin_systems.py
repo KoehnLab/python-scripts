@@ -15,6 +15,8 @@ class spin:
         if type=="e":
             self.g = np.diag([ge,ge,ge])
         elif type=="n":
+            if gnuc is None:
+                raise Exception("Must provide g factor for nucleus")
             # the electron g factor is taken here positive, so there is minus sign when
             # the magnetic moments are built; for the nuclei, we thus use a negative sign
             # here by default; note that nuclei can have both pos and neg. nuclear g factors
