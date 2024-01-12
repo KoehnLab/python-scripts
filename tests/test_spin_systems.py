@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_almost_equal
 
-from koehnlab.spin_hamiltonians import spin, spin_system
+from koehnlab.spin_hamiltonians import spin, spin_system, SpinType
 
 
 class TestSpin(unittest.TestCase):
@@ -227,7 +227,7 @@ class TestSpin(unittest.TestCase):
 
         # case: hyperfine coupling
         sp1 = spin(0.5)
-        sp2 = spin(2.5,"n",0.5)
+        sp2 = spin(2.5,SpinType.Nucleus,0.5)
 
         sp1.set_g([2.0,2.0,3.2])
 
@@ -277,7 +277,7 @@ class TestSpin(unittest.TestCase):
 
         # case: hyperfine coupling with nucleus axes rotated
         sp1 = spin(0.5)
-        sp2 = spin(2.5,"n",0.5)
+        sp2 = spin(2.5,SpinType.Nucleus,0.5)
 
         sp1.set_g([2.0,2.0,3.2])
         

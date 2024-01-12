@@ -1,20 +1,26 @@
+from enum import Enum
+
 import numpy as np 
+
 from .phys_const import ge, muNbohr
 from .spin_utils import spinMat
 
+class SpinType(Enum):
+    Electron = 1
+    Nucleus = 2
 
 numThr = 1e-8
 maxDim = 1000 
 
 class spin:
 
-    def __init__(self,S,type="e",gnuc=None):
+    def __init__(self,S,type=SpinType.Electron,gnuc=None):
         self.S = S
         self.type = type
         self.axes = np.diag([1.,1.,1.])
-        if type=="e":
+        if type==SpinType.Electron:
             self.g = np.diag([ge,ge,ge])
-        elif type=="n":
+        elif type==SpinType.Nucleus:
             if gnuc is None:
                 raise Exception("Must provide g factor for nucleus")
             # the electron g factor is taken here positive, so there is minus sign when
@@ -22,7 +28,7 @@ class spin:
             # here by default; note that nuclei can have both pos and neg. nuclear g factors
             self.g = -np.diag([gnuc,gnuc,gnuc])*muNbohr
         else:
-            raise Exception(f"Unknown type: {type}; allow only 'e' and 'n'")
+            raise Exception(f"Unknown type: {type}")
         self.ZFaxes = np.diag([1.,1.,1.])
         self.ZFaxial = 0.
         self.ZFrhombic = 0.
