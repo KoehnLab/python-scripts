@@ -1,7 +1,16 @@
+from enum import Enum
+
 import numpy as np 
+
 from .phys_const import ge, muNbohr
 from .spin_utils import spinMat
 
+class SpinType(Enum):
+    Electronic = 1
+    Nuclear = 2
+    # aliases for people who are fond of shortcuts (like me)
+    El = 1
+    Nuc = 2
 
 numThr = 1e-8
 maxDim = 1000 
@@ -16,13 +25,13 @@ class Spin:
           my_nuc_spin = Spin(3,"n",0.72)
     """
 
-    def __init__(self,S,type="e",gnuc=None):
+    def __init__(self,S,type=SpinType.Electronic,gnuc=None):
         self.S = S
         self.type = type
         self.axes = np.diag([1.,1.,1.])
-        if type=="e":
+        if type==SpinType.Electronic:
             self.g = np.diag([ge,ge,ge])
-        elif type=="n":
+        elif type==SpinType.Nuclear:
             if gnuc is None:
                 raise Exception("Must provide g factor for nucleus")
             # the electron g factor is taken here positive, so there is minus sign when
@@ -30,7 +39,7 @@ class Spin:
             # here by default; note that nuclei can have both pos and neg. nuclear g factors
             self.g = -np.diag([gnuc,gnuc,gnuc])*muNbohr
         else:
-            raise Exception(f"Unknown type: {type}; allow only 'e' and 'n'")
+            raise Exception(f"Unknown type: {type}")
         self.ZFaxes = np.diag([1.,1.,1.])
         self.ZFaxial = 0.
         self.ZFrhombic = 0.
@@ -60,7 +69,7 @@ class Spin:
             and the anisotropy axes (if different from magnetic axes) """
         if ZFaxes is not None:
             self.ZFaxes = np.array(ZFaxes)
-            check = np.matmul(ZFaxes.T,ZFaxes)-np.diag([1.,1.,1.])
+            check = np.matmul(self.ZFaxes.T,self.ZFaxes)-np.diag([1.,1.,1.])
             if np.vdot(check,check) > numThr*numThr:
                 raise Exception("set_ZF: Non-orthogonal axes on input")
             if np.linalg.det(ZFaxes) < 0.:
