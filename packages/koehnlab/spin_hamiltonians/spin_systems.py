@@ -6,7 +6,15 @@ from .spin_utils import spinMat
 numThr = 1e-8
 maxDim = 1000 
 
-class spin:
+class Spin:
+    """ This class defines a spin object  
+        Usage: Define an electronic spin system with, say, S=3/2 by 
+          my_spin = Spin(1.5)
+        or
+          my_spin = Spin(1.5,"e")
+        Define a nuclear spin with, say, S=3 and gnuc=0.72 by
+          my_nuc_spin = Spin(3,"n",0.72)
+    """
 
     def __init__(self,S,type="e",gnuc=None):
         self.S = S
@@ -30,19 +38,13 @@ class spin:
 
 
     def set_g(self,g):
-        #if g.shape == (3):
+        """ set the diagonal values of the g matrix (will be rotated to the defined axes) """
         self.g = np.matmul(self.axes,np.matmul(np.diag(g),self.axes.T))
-        #elif g.shape == (3,3):
-        #    self.g = g
-        #    # TODO: determine corresp. axis
-        #    # a bit more tricky; do we allow "raw g matrices"? we must sort axes etc.
-        #    raise Exception("spin.set_g: not yet fully implemented")
-        #else:
-        #    raise Exception("spin.set_g: unknown shape of argument; 3 vector or 3x3 matrix expected!")
 
 
     def set_axes(self,axes):
-        # should we check input? orthog? det=1?
+        """ set the axes for the spin system; must be orthogonal and right-handed
+            automatically updates the g matrix """
         axes = np.array(axes)
         check = np.matmul(axes.T,axes)-np.diag([1.,1.,1.])
         if np.vdot(check,check) > numThr*numThr:
@@ -54,8 +56,15 @@ class spin:
 
 
     def set_ZF(self,ZFaxial=0.,ZFrhombic=0.,ZFaxes=None):
+        """ set the zero-field splitting (axiality D, rhombicity E, 
+            and the anisotropy axes (if different from magnetic axes) """
         if ZFaxes is not None:
             self.ZFaxes = np.array(ZFaxes)
+            check = np.matmul(ZFaxes.T,ZFaxes)-np.diag([1.,1.,1.])
+            if np.vdot(check,check) > numThr*numThr:
+                raise Exception("set_ZF: Non-orthogonal axes on input")
+            if np.linalg.det(ZFaxes) < 0.:
+                raise Exception("set_ZF: Axes are not defining right-handed system")
         else:
             self.ZFaxes = self.axes
         self.ZFaxial = ZFaxial
@@ -66,7 +75,7 @@ class spin:
                                self.ZFaxes.T))
 
 
-    def getSpinMat(self):
+    def get_spin_mat(self):
         """ return spin matrix elements 
             <i|S_c|j>  c=x,y,z
         x,y,z are the reference basis """
@@ -81,11 +90,11 @@ class spin:
         return Mat
 
 
-    def getMMat(self):
+    def get_M_mat(self):
         """ return magnetic moment matrix elements
             note the minus sign!
             <i|M_c|j> = -g <i|S_c|j>  c=x,y,z
-        x,y,z are the reference basis """
+        x,y,z are the reference basis; unit is Bohr magnetons """
 
         dim = int(2*self.S)+1
         Mat = np.zeros((3,dim,dim),dtype=complex)
@@ -104,7 +113,8 @@ class spin:
         return Mat
 
 
-    def getZFmat(self):
+    def get_ZF_mat(self):
+        """ get the zero-field contributions from this center; unit is cm-1 """
 
         dim = int(2*self.S)+1
         Mat = np.zeros((dim,dim),dtype=complex)
@@ -122,7 +132,7 @@ class spin:
         return Mat
 
 
-class spin_system:
+class SpinSystem:
 
     def __init__(self):
         self.spins = {}
@@ -165,7 +175,7 @@ class spin_system:
         self.interaction.append([label1,label2,Jmat])
 
 
-    def getSpinMat(self):
+    def get_spin_mat(self):
         
         dim_before=1
         dim_after=self.dimension
@@ -176,7 +186,7 @@ class spin_system:
         Mat = np.zeros((3,self.dimension,self.dimension),dtype=complex)
 
         for label in self.order:
-            SMat = self.spins[label].getSpinMat()
+            SMat = self.spins[label].get_spin_mat()
             cdim = SMat.shape[1]
 
             dim_after //= cdim
@@ -200,7 +210,7 @@ class spin_system:
         return Mat
 
 
-    def getMMat(self):
+    def get_M_mat(self):
         
         dim_before=1
         dim_after=self.dimension
@@ -211,7 +221,7 @@ class spin_system:
         Mat = np.zeros((3,self.dimension,self.dimension),dtype=complex)
 
         for label in self.order:
-            MMat = self.spins[label].getMMat()
+            MMat = self.spins[label].get_M_mat()
             cdim = MMat.shape[1]
 
             dim_after //= cdim
@@ -235,7 +245,7 @@ class spin_system:
         return Mat
 
 
-    def getHMat(self):
+    def get_H_mat(self):
         
         dim_before=1
         dim_after=self.dimension
@@ -249,7 +259,7 @@ class spin_system:
         # collect dimensions:
         dims = []
         for label in self.order:
-            MMat = self.spins[label].getZFmat()
+            MMat = self.spins[label].get_ZF_mat()
             cdim = MMat.shape[1]
 
             dims.append(cdim)
@@ -307,8 +317,8 @@ class spin_system:
                 spin1 = self.spins[label2]
                 spin2 = self.spins[label1]
 
-            Smat1 = spin1.getSpinMat()
-            Smat2 = spin2.getSpinMat()
+            Smat1 = spin1.get_spin_mat()
+            Smat2 = spin2.get_spin_mat()
 
             # relative rotation:
             relaxes = np.matmul(spin1.axes,spin2.axes.T)
