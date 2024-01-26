@@ -20,9 +20,9 @@ class Spin:
         Usage: Define an electronic spin system with, say, S=3/2 by 
           my_spin = Spin(1.5)
         or
-          my_spin = Spin(1.5,"e")
+          my_spin = Spin(1.5,SpinType.Elec)
         Define a nuclear spin with, say, S=3 and gnuc=0.72 by
-          my_nuc_spin = Spin(3,"n",0.72)
+          my_nuc_spin = Spin(3,SpinType.Nuc,0.72)
     """
 
     def __init__(self,S,type=SpinType.Electronic,gnuc=None):
@@ -142,6 +142,11 @@ class Spin:
 
 
 class SpinSystem:
+    """ This class defines a collection of Spin objects
+        Usage: define an object and add spins by
+            sp_sys = SpinSystem()
+            sp_sys.add(Spin("spin1",0.5))
+            sp_sys.add(Spin("spin2",1.5))  """
 
     def __init__(self):
         self.spins = {}
@@ -151,6 +156,7 @@ class SpinSystem:
 
 
     def add(self,label,spin):
+        """ add a new object of type Spin and name it by a label """
         self.spins[label] = spin
         self.order.append(label)
         dim = int(2.*spin.S)+1
@@ -161,6 +167,8 @@ class SpinSystem:
 
 
     def set_order(self,labels):
+        """ call this routine with a list of (existing!) labels to change the sequence
+            has impact on the way the Hamiltonian and property matrices are ordered """
         new_order = []
         for label in labels:
             if label in self.spins.keys():
@@ -173,6 +181,8 @@ class SpinSystem:
 
 
     def set_interaction(self,label1,label2,Jiso,Jax=0.,Jrh=0.):
+        """ Add an interaction between the spin centers with label1 and label
+            Jiso is the isotropic part, Jax the axial part (zz), and Jrh the rhombic part (xx - yy) """
         if label1 not in self.spins.keys():
             raise Exception(f"Undefined label: {label1}")
         if label2 not in self.spins.keys():
@@ -185,7 +195,8 @@ class SpinSystem:
 
 
     def get_spin_mat(self):
-        
+        """ get the (pseudo) spin matrix of the total system """
+
         dim_before=1
         dim_after=self.dimension
 
@@ -220,7 +231,8 @@ class SpinSystem:
 
 
     def get_M_mat(self):
-        
+        """ get the magnetic moment matrix elements of the total system """
+
         dim_before=1
         dim_after=self.dimension
 
@@ -255,6 +267,7 @@ class SpinSystem:
 
 
     def get_H_mat(self):
+        """ get the (B field free) Hamiltonian matrix of the system """
         
         dim_before=1
         dim_after=self.dimension
