@@ -17,6 +17,11 @@ ChiVVCGS = 0.37514809612
 # speed of light (in cm/s)
 cCGS = 29979245800
 
+#Lande-factor
+g_e = 2.00231930436256          #from https://physics.nist.gov/cgi-bin/cuu/Value?gem|search_for=g
+
+
+
 # 2018 CODATA
 # Boltzmann constant: kB = 1.380 649 1e-23 J/K
 # Avogadro constant:  NA = 6.022 140 76 1e23
