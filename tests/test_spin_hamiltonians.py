@@ -9,7 +9,7 @@ from numpy.testing import assert_array_almost_equal
 from koehnlab.spin_hamiltonians import spinMat, tprod, diagonalizeSpinHamiltonian
 
 
-class TestFiniteDifference(unittest.TestCase):
+class TestSpinHamiltonians(unittest.TestCase):
     def test_spinMat(self):
         isq2 = np.sqrt(0.5)
         assert_array_almost_equal(
@@ -79,7 +79,8 @@ class TestFiniteDifference(unittest.TestCase):
             ],
             dtype=complex,
         )
-        MmatX = np.array(
+        # M = - muB g S  --> therefore we add a -1 here
+        MmatX = -np.array(
             [
                 [0.0, sq3, 0.0, 0.0],
                 [sq3, 0.0, 2.0, 0.0],
@@ -89,7 +90,7 @@ class TestFiniteDifference(unittest.TestCase):
             dtype=complex,
         )
         MmatY = (
-            np.array(
+            -np.array(
                 [
                     [0.0, -sq3, 0.0, 0.0],
                     [sq3, 0.0, -2.0, 0.0],
@@ -100,19 +101,19 @@ class TestFiniteDifference(unittest.TestCase):
             )
             * 1j
         )
-        MmatZ = np.diag([3.0, 1.0, -1.0, -3.0])
+        MmatZ = -np.diag([3.0, 1.0, -1.0, -3.0])
 
-        ev1, U = diagonalizeSpinHamiltonian(Hmat)
+        ev1, U = diagonalizeSpinHamiltonian(Hmat,np.array([MmatX, MmatY, MmatZ]))
         assert_array_almost_equal(
             ev1, np.array([-248.85528726, -248.85528726, -26.14471274, -26.14471274])
         )
         # test also standard choice of Kramers pair:
         MZT = np.matmul(np.conj(U.T), np.matmul(MmatZ, U))
-        self.assertAlmostEqual(np.abs(MZT[0, 0]), 2.97565832)
-        self.assertAlmostEqual(np.abs(MZT[1, 1]), 2.97565832)
-        self.assertAlmostEqual(np.abs(MZT[2, 2]), 0.97565832)
-        self.assertAlmostEqual(np.abs(MZT[3, 3]), 0.97565832)
-        self.assertAlmostEqual(MZT[0, 2], -0.31108551)
+        self.assertAlmostEqual(MZT[0, 0],  2.97565832)
+        self.assertAlmostEqual(MZT[1, 1], -2.97565832)
+        self.assertAlmostEqual(MZT[2, 2],  0.97565832)
+        self.assertAlmostEqual(MZT[3, 3], -0.97565832)
+        self.assertAlmostEqual(MZT[0, 3],  0.31108551)
 
         # test with Zeeman terms:
         ev2, _ = diagonalizeSpinHamiltonian(

@@ -81,7 +81,8 @@ def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
 
     if Mmat is not None and Bfield is not None:
         for ii in range(3):
-            HmatD += Bfield[ii] * Mmat[ii] * muBcm
+            # H_Zeeman = - M B
+            HmatD -= Bfield[ii] * Mmat[ii] * muBcm
 
     En, U = np.linalg.eigh(HmatD)
 
@@ -100,7 +101,8 @@ def diagonalizeSpinHamiltonian(Hmat, Mmat=None, Bfield=None):
                 ndim_block += 1
             idxnd = idxst + ndim_block
             # print("current block: ",idxst,idxnd-1)
-            submat = np.array(Mtraf[idxst:idxnd, idxst:idxnd])
+            # use negative submat to get positive Mu first
+            submat = -np.array(Mtraf[idxst:idxnd, idxst:idxnd])
             # printMatC(submat)
             # print()
             # diagonalize submatrix
