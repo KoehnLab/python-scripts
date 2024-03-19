@@ -22,6 +22,10 @@ ChiCGS = 0.5584939410
 ChiVVCGS = 0.37514809612
 # speed of light (in cm/s)
 cCGS = 29979245800
+# Absolute value of the Landé-factor (electron g-factor)
+# from https://physics.nist.gov/cgi-bin/cuu/Value?gem|search_for=g
+g_e = 2.00231930436256
+
 
 # 2018 CODATA
 # electron g factor:  ge = 2.002 319 304 362 56(35)  ## actually defined negative
