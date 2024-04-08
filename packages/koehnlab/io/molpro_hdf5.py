@@ -33,15 +33,14 @@ def get_property_matrix(path:str,prop:str,basis: Basis):
     SO_2d = get_2dmat(SO)
     if basis == Basis.WF0:
         return PropMat
-    elif basis == Basis.PROD:
+    if basis == Basis.PROD:
         if prop == 'so':
             PropMat = get_multispinmat_prod(PropMat,SpinStates,SpatStates)
         else:
             PropMat = get_multipropmat_prod(PropMat,SpinStates,SpatStates)
         return PropMat
-    elif basis == Basis.SO:
+    if basis == Basis.SO:
         eigvecsh,eigvalsh = np.linalg.eigh(SO_2d)
         PropMat = transform_so(PropMat,eigvecsh)
         return PropMat
-    else: 
-        raise Exception("an error occurred","unexpected value for basis")
+    raise Exception("an error occurred","unexpected value for basis")

@@ -2,25 +2,25 @@ import numpy as np
 from .phys_const import muBcm,g_e
 
 
-def get_magnetic_moment_matrix(s,l,unit: bool):
+def get_magnetic_moment_matrix(sMat,lMat,unit: bool):
         """
         Computes the magnetic moment of the system in the basis of given spin and angular momentum matrix
         Procedure taken from: L. F. Chibotaru, L. Ungur; Ab initio calculation of anisotropic magnetic properties of complexes. I. Unique definition of
         pseudospin Hamiltonians and their derivation. J. Chem. Phys. 14 August 2012; 137 (6): 064112. https://doi.org/10.1063/1.4739763
         Args:
         ---------------------
-        s -- spin matrix in Js
-        l -- angular momentum matrix in (kg*m^2)/s
+        sMat -- spin matrix 
+        lmat -- angular momentum matrix
         unit -- Boolean if in multiples of bohr magneton
 
         Returns:
         ---------------------
-        muMat -- matrix of magnetic moment in J/T
+        muMat -- matrix of magnetic moment 
         """
         if unit:
-            muMat = -muBcm*(g_e*s+l)
+            muMat = -muBcm*(g_e*sMat+lMat)
         else: 
-            muMat = -1*(g_e*s+l)
+            muMat = -1*(g_e*sMat+lMat)
         return muMat
 
 def get_A_matrix(mu_x,mu_y,mu_z,n:int):
@@ -48,15 +48,15 @@ def get_A_matrix(mu_x,mu_y,mu_z,n:int):
                         Amat[alpha,beta] = 0.5*trace.real
         return Amat
 
-def get_g_tensor(A,multiplicity:int):
+def get_g_tensor(Amat,multiplicity:int):
         """
-        returns the g-Tensorin cartesian coordinates and his main values  of given helpermatrix A and given multiplicity of the system,
+        returns the g-Tensorin cartesian coordinates and his main values with given multiplicity of the system,
         also returns the rotation matrix between main axes and main magnetic axes. 
         Procedure taken from: L. F. Chibotaru, L. Ungur; Ab initio calculation of anisotropic magnetic properties of complexes. I. Unique definition of
         pseudospin Hamiltonians and their derivation. J. Chem. Phys. 14 August 2012; 137 (6): 064112. https://doi.org/10.1063/1.4739763
         Args:
         ----------------------
-        A -- helper matrix
+	Amat -- helpermatrix from from above
         multiplicity -- multiplicity of the system
 
         Returns:
@@ -65,8 +65,8 @@ def get_g_tensor(A,multiplicity:int):
         Rmat -- rotation matrix
         """
         S = 0.5*(multiplicity-1)
-        g_diag = np.zeros(np.shape(A))
-        eigvalA,Rmat = np.linalg.eigh(A)
+        g_diag = np.zeros(np.shape(Amat))
+        eigvalA,Rmat = np.linalg.eigh(Amat)
         for i in range(len(eigvalA)):
                 g_diag[i,i] =np.sqrt(6*eigvalA[i]/(S*(S+1)*(2*S+1)))
         return g_diag,Rmat
