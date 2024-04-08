@@ -1,6 +1,6 @@
 import numpy as np
 import math as m
-from spin_hamiltonians import spin_utils
+import koehnlab.spin_hamiltonians 
 
 def get_propmat_prod(lMat,multiplicity:int,spat_num:int):
         """
