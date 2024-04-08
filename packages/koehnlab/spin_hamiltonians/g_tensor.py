@@ -1,5 +1,5 @@
 import numpy as np
-from .phys_const import muBcm,g_e
+from .phys_const import muBcm,ge
 
 
 def get_magnetic_moment_matrix(sMat,lMat,unit: bool):
@@ -18,9 +18,9 @@ def get_magnetic_moment_matrix(sMat,lMat,unit: bool):
         muMat -- matrix of magnetic moment 
         """
         if unit:
-            muMat = -muBcm*(g_e*sMat+lMat)
+            muMat = -muBcm*(ge*sMat+lMat)
         else: 
-            muMat = -1*(g_e*sMat+lMat)
+            muMat = -1*(ge*sMat+lMat)
         return muMat
 
 def get_A_matrix(mu_x,mu_y,mu_z,n:int):

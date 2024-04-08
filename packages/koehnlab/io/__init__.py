@@ -1,1 +1,1 @@
-from .MolproHDF5 import extract_data
+from .molpro_hdf5 import get_property_matrix

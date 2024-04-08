@@ -1,4 +1,5 @@
 import numpy as np
+import math as m
 from spin_hamiltonians import spin_utils
 
 def get_propmat_prod(lMat,multiplicity:int,spat_num:int):
@@ -25,7 +26,7 @@ def get_propmat_prod(lMat,multiplicity:int,spat_num:int):
                             Lmat[x,y] = lMat[i,j]
         return Lmat
 
-def get_spinmat_prod(sMat,multiplicity:int,spat_num:int)
+def get_spinmat_prod(sMat,multiplicity:int,spat_num:int):
         """
         Computes the spin matrix elements of the given spin matrix in the productbasis (spin-spatial basis).
         Blocked over ms number.
@@ -56,7 +57,8 @@ def get_spinmat_prod(sMat,multiplicity:int,spat_num:int)
 
 def get_multispinmat_prod(spins,spat_nums,coord:str):
         """
-        Returns the spin matrix of all given Spins S in the productbasis of all spins and all spatial coordinates
+        Returns the spin matrix of all given Spins S in the productbasis of spin and spatial basis, 
+        of all spins and all spatial coordinates
 
         Args:
         --------------------------
@@ -78,8 +80,10 @@ def get_multispinmat_prod(spins,spat_nums,coord:str):
             spinmat_coord = spin_utils.spinMat(mult,coord)
             spinmat_prod = get_spinmat_prod(spinmat_coord,mult,spat_nums[i])
             upper_bound += int(mult*spat_nums[i])
-            assert upper_bound-lower_bound == np.shape(spinmat_prod)[0]
-            assert upper_bound-lower_bound == np.shape(spinmat_prod)[1]
+            shape = np.shape(spinmat_prod)
+            diff = upper_bound - lower_bound
+            assert diff == shape[0]
+            assert diff == shape[1]
             Smat[lower_bound:upper_bound,lower_bound:upper_bound] = spinmat_prod
             lower_bound = upper_bound
         return Smat
