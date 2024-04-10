@@ -1,6 +1,6 @@
 import numpy as np
 import math as m
-import koehnlab.spin_hamiltonians 
+from koehnlab.spin_hamiltonians import spin_utils
 
 def get_propmat_prod(lMat,multiplicity:int,spat_num:int):
         """
@@ -111,8 +111,10 @@ def get_multipropmat_prod(lMat,spins,spat_nums):
         for i,mult in enumerate(multiplicities):
             propmat_prod = get_propmat_prod(lMat,mult,spat_nums[i])
             upper_bound += int(mult*spat_nums[i])
-            assert upper_bound-lower_bound == np.shape(propmat_prod)[0]
-            assert upper_bound-lower_bound == np.shape(propmat_prod)[1]
+            shape = np.shape(propmat_prod)
+            diff = upper_bound-lower_bound
+            assert diff == shape[0]
+            assert diff == shape[1]
             Lmat[lower_bound:upper_bound,lower_bound:upper_bound] = propmat_prod
             lower_bound = upper_bound
         return Lmat
