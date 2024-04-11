@@ -32,7 +32,7 @@ def get_2dmat(matrix_3d):
         return matrix
 
 
-def get_property_matrix(path:str,prop:str,basis: Basis):
+def get_property_matrix(path:str,prop:str,basis: Basis,coord:str):
     '''
     Returns the matrix of a given operator in a given basis which is stored
     in a HDF5 File in the given path.
@@ -44,6 +44,7 @@ def get_property_matrix(path:str,prop:str,basis: Basis):
             (DMX,DMY,DMZ,LX(),LY(),LZ(),SO)
     basis -- the basis in which the property matrix should be returned. 
   	     Choose one of the three options of Basis Enum
+    coord -- the coordinate the spin_matrix in productbasis of spin and spatial states should be returned: x,y,z
     Returns:
     ---------------------
     PropMat -- The property matrix of given operator in the given basis
@@ -59,7 +60,7 @@ def get_property_matrix(path:str,prop:str,basis: Basis):
         return PropMat
     if basis == Basis.PROD:
         if prop == 'so':
-            PropMat = get_multispinmat_prod(PropMat,SpinStates,SpatStates)
+            PropMat = get_multispinmat_prod(PropMat,SpinStates,SpatStates,coord)
         else:
             PropMat = get_multipropmat_prod(PropMat,SpinStates,SpatStates)
         return PropMat
