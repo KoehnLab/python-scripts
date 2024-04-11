@@ -53,7 +53,7 @@ def get_spinmat_prod(sMat,multiplicity:int,spat_num:int):
                         j = y%spat_num
                         if i==j:
                                 Smat[x,y] = sMat[ms,ms_strich]
-                return Smat
+        return Smat
 
 def get_multispinmat_prod(spins,spat_nums,coord:str):
         """
@@ -76,7 +76,6 @@ def get_multispinmat_prod(spins,spat_nums,coord:str):
         Smat = np.zeros((dim,dim),dtype = complex)
         lower_bound = 0
         upper_bound = 0
-        shape = np.zeros(2)
         for i,mult in enumerate(multiplicities):
             spinmat_coord = spin_utils.spinMat(mult,coord)
             spinmat_prod = get_spinmat_prod(spinmat_coord,mult,spat_nums[i])
@@ -109,7 +108,6 @@ def get_multipropmat_prod(lMat,spins,spat_nums):
         Lmat = np.zeros((dim,dim),dtype = complex)
         lower_bound = 0
         upper_bound = 0
-        shape = np.zeros(2)
         for i,mult in enumerate(multiplicities):
             propmat_prod = get_propmat_prod(lMat,mult,spat_nums[i])
             upper_bound += int(mult*spat_nums[i])
