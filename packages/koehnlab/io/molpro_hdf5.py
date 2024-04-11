@@ -50,10 +50,10 @@ def get_property_matrix(path:str,prop:str,basis: Basis):
 
     '''
     with h5py.File(path,'r') as h5file:
-        PropMat = h5file['prop'][:]
-        SO = h5file['so'][:]
-        SpinStates = h5file['SpinStates'][:]
-        SpatStates = h5file['SpatStates'][:]
+        PropMat = h5file['prop'][:] # type: ignore
+        SO = h5file['so'][:] # type: ignore
+        SpinStates = h5file['SpinStates'][:] # type: ignore
+        SpatStates = h5file['SpatStates'][:] # type: ignore
     SO_2d = get_2dmat(SO)
     if basis == Basis.WF0:
         return PropMat
