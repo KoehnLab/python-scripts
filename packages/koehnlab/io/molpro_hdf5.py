@@ -60,7 +60,7 @@ def get_property_matrix(path:str,prop:str,basis: Basis,coord:str):
         return PropMat
     if basis == Basis.PROD:
         if prop == 'so':
-            PropMat = get_multispinmat_prod(PropMat,SpinStates,SpatStates,coord)
+            PropMat = get_multispinmat_prod(SpinStates,SpatStates,coord)
         else:
             PropMat = get_multipropmat_prod(PropMat,SpinStates,SpatStates)
         return PropMat
