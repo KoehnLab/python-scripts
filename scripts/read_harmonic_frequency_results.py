@@ -113,7 +113,8 @@ def process_turbomole(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Read results from a harmonic frequency calculation and store them in a Numpy .npz file"
+        description="Read results from a harmonic frequency calculation and store them in a Numpy .npz file."\
+                   +"Note that mass-weighted normal modes (L matrix) are stored!"
     )
     parser.add_argument(
         "--turbomole-dir",
@@ -140,7 +141,7 @@ def main():
         elements, coordinates, masses, frequencies, Lmat = process_turbomole(
             args.turbomole_dir
         )
-        program = "TurboMole"
+        program = "Turbomole"
     else:
         raise RuntimeError("No input specified")
 
