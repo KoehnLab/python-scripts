@@ -42,6 +42,7 @@ def getMainElementIndices(
         for index, element in np.ndenumerate(dataSource):
             if element >= threshold:
                 # numpy uses tuples as iterators, but for 1D arrays, we want to return integers
+                assert len(index) > 0
                 indices.append(index if len(index) > 1 else index[0])
 
         return indices
