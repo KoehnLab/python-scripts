@@ -45,8 +45,9 @@ def get_spinmat_prod(sMat,multiplicity:int,spat_num:int):
         Smat = np.zeros((dim,dim),dtype = complex)
         if spin == 0:
                 return Smat
-        for x in range(dim):
-                for y in range(dim):
+        else:
+                for x in range(dim):
+                    for y in range(dim):
                         ms = m.floor(x/spat_num)
                         ms_strich = m.floor(y/spat_num)
                         i = x%spat_num
@@ -77,7 +78,8 @@ def get_multispinmat_prod(spins,spat_nums,coord:str):
         lower_bound = 0
         upper_bound = 0
         for i,mult in enumerate(multiplicities):
-            spinmat_coord = spin_utils.spinMat(mult,coord)
+            Spin = (mult-1)/2
+            spinmat_coord = spin_utils.spinMat(Spin,coord)
             spinmat_prod = get_spinmat_prod(spinmat_coord,mult,spat_nums[i])
             upper_bound += int(mult*spat_nums[i])
             shape = np.shape(spinmat_prod)
