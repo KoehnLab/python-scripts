@@ -1,16 +1,13 @@
 import numpy as np
 import h5py
 from enum import Enum
-from .basis_util import get_multispinmat_prod,get_multipropmat_prod,transform_so
-
-
-
-
+from koehnlab.io import basis_util
+from koehnlab.spin_hamiltonians import spin_utils
 
 class Basis(Enum):
-    WF0 = "Zeroth order wavefunction"
-    PROD = "Spin-spatial Productbasis"
-    SO = "Spin-orbit coupled basis"
+    WF0 = "WF0"
+    PROD = "PROD"
+    SO = "SO"
 
 def get_2dmat(matrix_3d):
         '''
@@ -32,7 +29,7 @@ def get_2dmat(matrix_3d):
         return matrix
 
 
-def get_property_matrix(path:str,prop:str,basis: Basis,coord:str):
+def get_property_matrix(path:str,prop:str,basis:str,coord:str):
     '''
     Returns the matrix of a given operator in a given basis which is stored
     in a HDF5 File in the given path.
@@ -51,21 +48,35 @@ def get_property_matrix(path:str,prop:str,basis: Basis,coord:str):
 
     '''
     with h5py.File(path,'r') as h5file:
-        PropMat = h5file['prop'][:] # type: ignore
-        SO = h5file['so'][:] # type: ignore
-        SpinStates = h5file['SpinStates'][:] # type: ignore
-        SpatStates = h5file['SpatStates'][:] # type: ignore
+        PropMat = h5file[prop][:] # type: ignore
+        SO = h5file['xh5d_dataset_multidim_so.hdf5'][:] # type: ignore
+        SpinStates = h5file['xh5d_dataset_spin_states.hdf5'][:] # type: ignore
+        SpatStates = h5file['xh5d_dataset_spat_states.hdf5'][:] # type: ignore
+        SpinStates = np.array(SpinStates)
+        SpatStates = np.array(SpatStates)
     SO_2d = get_2dmat(SO)
-    if basis == Basis.WF0:
+    if prop == 'SO':
+        return SO_2d
+    if basis == 'WF0':
         return PropMat
-    if basis == Basis.PROD:
-        if prop == 'so':
-            PropMat = get_multispinmat_prod(SpinStates,SpatStates,coord)
-        else:
-            PropMat = get_multipropmat_prod(PropMat,SpinStates,SpatStates)
-        return PropMat
-    if basis == Basis.SO:
-        eigvecsh,eigvalsh = np.linalg.eigh(SO_2d)
-        PropMat = transform_so(PropMat,eigvecsh)
+    if basis == 'PROD':
+            PropMat = basis_util.get_multipropmat_prod(PropMat,SpinStates,SpatStates)
+            return PropMat
+    if basis == 'SO':
+        PropMat = basis_util.get_multipropmat_prod(PropMat,SpinStates,SpatStates)
+        print(np.shape(PropMat))
+        eigvalsh,eigvecsh = np.linalg.eigh(SO_2d)
+        PropMat = basis_util.transform_so(PropMat,eigvecsh)
         return PropMat
     raise Exception("an error occurred","unexpected value for basis")
+
+
+
+def get_spin_spat_states(path:str):
+    with h5py.File(path,'r') as h5file:
+        SpinStates = h5file['xh5d_dataset_spin_states.hdf5'][:] # type: ignore
+        SpatStates = h5file['xh5d_dataset_spat_states.hdf5'][:] # type: ignore
+        SpinStates = np.array(SpinStates)
+        SpatStates = np.array(SpatStates)
+    return SpinStates, SpatStates
+

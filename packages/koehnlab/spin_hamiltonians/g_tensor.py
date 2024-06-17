@@ -23,7 +23,7 @@ def get_magnetic_moment_matrix(sMat,lMat,unit: bool):
             muMat = -1*(ge*sMat+lMat)
         return muMat
 
-def get_A_matrix(mu_x,mu_y,mu_z,n:int):
+def get_A_matrix(mu_x,mu_y,mu_z):
         """
         Computes the A matrix to calculate g-Tensor afterwards
         Procedure taken from: L. F. Chibotaru, L. Ungur; Ab initio calculation of anisotropic magnetic properties of complexes. I. Unique definition of
@@ -37,7 +37,7 @@ def get_A_matrix(mu_x,mu_y,mu_z,n:int):
         ---------------------
         Amat -- helper matrix for g-Tensor
         """
-        mu = [mu_x[:n,:n],mu_y[:n,:n],mu_z[:n,:n]]
+        mu = [mu_x,mu_y,mu_z]
         n = len(mu)
         Amat = np.zeros((n,n))
         for alpha in range(n):
@@ -67,6 +67,7 @@ def get_g_tensor(Amat,multiplicity:int):
         S = 0.5*(multiplicity-1)
         g_diag = np.zeros(np.shape(Amat))
         eigvalA,Rmat = np.linalg.eigh(Amat)
+        print(eigvalA)
         for i in range(len(eigvalA)):
                 g_diag[i,i] =np.sqrt(6*eigvalA[i]/(S*(S+1)*(2*S+1)))
         return g_diag,Rmat

@@ -14,14 +14,14 @@ def get_propmat_prod(lMat,multiplicity:int,spat_num:int):
         ---------------------
         Lmat -- Matrix of angular momentum in productbasis 
         """
-        dim = multiplicity*spat_num
+        dim = int(multiplicity*spat_num)
         Lmat = np.zeros((dim,dim),dtype = complex)
         for x in range(dim):
                 for y in range(dim):
                         ms = m.floor(x/spat_num)
                         ms_strich = m.floor(y/spat_num)
-                        i = x%spat_num
-                        j = y%spat_num
+                        i = int(x%spat_num)
+                        j = int(y%spat_num)
                         if ms == ms_strich:
                             Lmat[x,y] = lMat[i,j]
         return Lmat
@@ -40,7 +40,7 @@ def get_spinmat_prod(sMat,multiplicity:int,spat_num:int):
         ------------------------
         SmatX,SmatY,SmatZ -- spin matrix in the productbasis 
         """
-        dim = multiplicity*spat_num
+        dim = int(multiplicity*spat_num)
         spin = 0.5*(multiplicity-1)
         Smat = np.zeros((dim,dim),dtype = complex)
         if spin == 0:
@@ -108,11 +108,15 @@ def get_multipropmat_prod(lMat,spins,spat_nums):
         Lmat = np.zeros((dim,dim),dtype = complex)
         lower_bound = 0
         upper_bound = 0
-        for i,mult in enumerate(multiplicities):
+        for mult in multiplicities:
+            i = multiplicities.index(mult)
             if (i == 0):
-                propmat_prod = get_propmat_prod(lMat[:spat_nums[i], :spat_nums[i]],mult,spat_nums[i])
-            else: 
-                propmat_prod = get_propmat_prod(lMat[spat_nums[i-1]:sum(spat_nums[:i+1]),spat_nums[i-1]:sum(spat_nums[:i+1])],mult,spat_nums[i])
+                spat_num = int(spat_nums[i])
+                #print(spat_nums[i])
+                lmat = lMat[:spat_num,:spat_num]
+                propmat_prod = get_propmat_prod(lmat,mult,spat_nums[i])
+            else:
+                propmat_prod = get_propmat_prod(lMat[int(spat_nums[i-1]):int(sum(spat_nums[:i+1])),int(spat_nums[i-1]):int(sum(spat_nums[:i+1]))],mult,spat_nums[i])
             upper_bound += int(mult*spat_nums[i])
             shape = np.shape(propmat_prod)
             diff = upper_bound-lower_bound
