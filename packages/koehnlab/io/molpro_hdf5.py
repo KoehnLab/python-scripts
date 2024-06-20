@@ -47,17 +47,19 @@ def get_property_matrix(path:str,prop:str,basis:str):
 
     '''
     with h5py.File(path,'r') as h5file:
-        if (prop == 'SO'):
-            SO = h5file['xh5d_dataset_multidim_so.hdf5'][:] # type: ignore
-            SO_2d = get_2dmat(SO)
-            return SO_2d
-        PropMat = h5file[prop][:] # type: ignore
         SpinStates = h5file['xh5d_dataset_spin_states.hdf5'][:] # type: ignore
         SpatStates = h5file['xh5d_dataset_spat_states.hdf5'][:] # type: ignore
         SpinStates = np.array(SpinStates)
         SpatStates = np.array(SpatStates)
-    if (prop[0] == 'L'):
-        PropMat = -1j*PropMat
+        if(prop == 'SO'):
+            SO = h5file['xh5d_dataset_multidim_so.hdf5'][:] # type: ignore
+        if(prop[0] == 'D'):
+            PropMat = h5file[prop][:] # type: ignore
+        if(prop[0] == 'L'):
+            PropMat = -1j*h5file[prop][:] # type: ignore
+    if (prop == 'SO'):
+        SO_2d = get_2dmat(SO)
+        return SO_2d
     if basis == 'WF0':
         return PropMat
     if basis == 'PROD':
