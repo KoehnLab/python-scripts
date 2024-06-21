@@ -53,25 +53,26 @@ def get_property_matrix(path:str,prop:str,basis:str):
         SpatStates = np.array(SpatStates)
         if(prop == 'SO'):
             SO = h5file['xh5d_dataset_multidim_so.hdf5'][:] # type: ignore
-        if(prop[0] == 'D'):
+            return get_2dmat(SO)
+        elif(prop[0] == 'D'):
             PropMat = h5file[prop][:] # type: ignore
-        if(prop[0] == 'L'):
+        elif(prop[0] == 'L'):
             PropMat = -1j*h5file[prop][:] # type: ignore
-    if (prop == 'SO'):
-        SO_2d = get_2dmat(SO)
-        return SO_2d
+        else:
+            raise Exception("an error occurred","unexpected value for matrix")
     if basis == 'WF0':
         return PropMat
-    if basis == 'PROD':
+    elif basis == 'PROD':
             PropMat = basis_util.get_multipropmat_prod(PropMat,SpinStates,SpatStates)
             return PropMat
-    if basis == 'SO':
+    elif basis == 'SO':
         PropMat = basis_util.get_multipropmat_prod(PropMat,SpinStates,SpatStates)
-        print(np.shape(PropMat))
+        #print(np.shape(PropMat))
         eigvalsh,eigvecsh = np.linalg.eigh(SO_2d)
         PropMat = basis_util.transform_so(PropMat,eigvecsh)
         return PropMat
-    raise Exception("an error occurred","unexpected value for basis")
+    else:
+        raise Exception("an error occurred","unexpected value for basis")
 
 
 
