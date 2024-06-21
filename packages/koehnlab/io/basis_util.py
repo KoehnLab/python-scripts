@@ -56,6 +56,36 @@ def get_spinmat_prod(sMat,multiplicity:int,spat_num:int):
                                 Smat[x,y] = sMat[ms,ms_strich]
         return Smat
 
+def get_multispinmat_wf0(spins,coord:str):
+     """
+     Returns the spin matrix of all given Spins in the WF0-basis, the basis of zeroth order wavefunctions
+     for all spins.
+     
+     Args:
+     -----------------------------
+     spins -- array of multiple spin states, sorted in descending order
+     coord -- string with possible values: 'x','y','z'
+     
+     Returns:
+     -----------------------------
+     SMat -- Spin Matrix for multiple spins
+
+     """
+     multiplicities = [2*S+1 for S in spins]
+     dim = int(np.sum(multiplicities))
+     SMat = np.zeros((dim,dim),dtype = complex)
+     lower_bound = 0
+     upper_bound = 0
+     for i,mult in enumerate(multiplicities):
+          spin_mat_coord = spin_utils.spinMat(spins[i],coord)
+          upper_bound += int(mult)
+          assert upper_bound - lower_bound == np.shape(spin_mat_coord)[0]
+          assert upper_bound - lower_bound == np.shape(spin_mat_coord)[1]
+          SMat[lower_bound:upper_bound,lower_bound:upper_bound] = spin_mat_coord
+          lower_bound = upper_bound
+     return SMat
+
+
 def get_multispinmat_prod(spins,spat_nums,coord:str):
         """
         Returns the spin matrix of all given Spins S in the productbasis of spin and spatial basis, 
