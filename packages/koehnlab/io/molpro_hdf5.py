@@ -1,6 +1,7 @@
 import numpy as np
 import h5py
 from enum import Enum
+from koehnlab import print_utilities
 from koehnlab.io import basis_util
 from koehnlab.spin_hamiltonians import spin_utils
 
@@ -47,14 +48,14 @@ def get_property_matrix(path:str,prop:str,basis:str):
 
     '''
     with h5py.File(path,'r') as h5file:
-        SpinStates = h5file['xh5d_dataset_spin_states.hdf5'][:] # type: ignore
-        SpatStates = h5file['xh5d_dataset_spat_states.hdf5'][:] # type: ignore
+        SpinStates = h5file['Spin QNs'][:] # type: ignore
+        SpatStates = h5file['Spatial states'][:] # type: ignore
         SpinStates = np.array(SpinStates)
         SpatStates = np.array(SpatStates)
-        SO = h5file['xh5d_dataset_multidim_so.hdf5'][:] # type: ignore
+        SO = h5file['SOC matrix'][:] # type: ignore
         SO_2dmat = get_2dmat(SO)
-        if (prop == 'SO'):
-            return SO_2dmat
+        if prop == 'SO':
+             return SO_2dmat
         elif(prop[0] == 'D'):
             PropMat = h5file[prop][:] # type: ignore
         elif(prop[0] == 'L'):
@@ -79,8 +80,8 @@ def get_property_matrix(path:str,prop:str,basis:str):
 
 def get_spin_spat_states(path:str):
     with h5py.File(path,'r') as h5file:
-        SpinStates = h5file['xh5d_dataset_spin_states.hdf5'][:] # type: ignore
-        SpatStates = h5file['xh5d_dataset_spat_states.hdf5'][:] # type: ignore
+        SpinStates = h5file['Spin QNs'][:] # type: ignore
+        SpatStates = h5file['Spatial states'][:] # type: ignore
         SpinStates = np.array(SpinStates)
         SpatStates = np.array(SpatStates)
     return SpinStates, SpatStates
