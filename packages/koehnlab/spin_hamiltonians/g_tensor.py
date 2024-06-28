@@ -69,7 +69,7 @@ def get_g_tensor(Amat,multiplicity:int):
         """
         S = 0.5*(multiplicity-1)
         g_diag = np.zeros(np.shape(Amat))
-        eigvalA,Rmat = np.linalg.eig(Amat)
+        eigvalA,Rmat = np.linalg.eigh(Amat)
         print(eigvalA)
         for i in range(len(eigvalA)):
                 g_diag[i,i] = np.sqrt((6*eigvalA[i])/(S*(S+1)*(2*S+1)))
