@@ -1,6 +1,6 @@
 import numpy as np
 from .phys_const import muBcm,ge
-
+from koehnlab import print_utilities
 
 def get_magnetic_moment_matrix(sMat,lMat,unit: bool):
         """
@@ -23,7 +23,7 @@ def get_magnetic_moment_matrix(sMat,lMat,unit: bool):
             muMat = -1*(ge*sMat+lMat)
         return muMat
 
-def get_A_matrix(mu_x,mu_y,mu_z):
+def get_A_matrix(mu_x,mu_y,mu_z,n):
         """
         Computes the A matrix to calculate g-Tensor afterwards
         Procedure taken from: L. F. Chibotaru, L. Ungur; Ab initio calculation of anisotropic magnetic properties of complexes. I. Unique definition of
@@ -37,11 +37,14 @@ def get_A_matrix(mu_x,mu_y,mu_z):
         ---------------------
         Amat -- helper matrix for g-Tensor
         """
-        mu = [mu_x,mu_y,mu_z]
-        n = len(mu)
-        Amat = np.zeros((n,n))
-        for alpha in range(n):
-                for beta in range(n):
+        mu_x_n = mu_x[:n,:n]
+        mu_y_n = mu_y[:n,:n]
+        mu_z_n = mu_z[:n,:n]
+        mu = [mu_x_n,mu_y_n,mu_z_n]
+        print_utilities.printMatF(mu_x_n)
+        Amat = np.zeros((3,3))
+        for alpha in range(3):
+                for beta in range(3):
                         prod = np.matmul(mu[alpha],mu[beta])
                         trace = np.matrix.trace(prod)
                         assert np.abs(trace.imag) < 1E-6
@@ -66,8 +69,8 @@ def get_g_tensor(Amat,multiplicity:int):
         """
         S = 0.5*(multiplicity-1)
         g_diag = np.zeros(np.shape(Amat))
-        eigvalA,Rmat = np.linalg.eigh(Amat)
+        eigvalA,Rmat = np.linalg.eig(Amat)
         print(eigvalA)
         for i in range(len(eigvalA)):
-                g_diag[i,i] =np.sqrt(6*eigvalA[i]/(S*(S+1)*(2*S+1)))
+                g_diag[i,i] = np.sqrt((6*eigvalA[i])/(S*(S+1)*(2*S+1)))
         return g_diag,Rmat
