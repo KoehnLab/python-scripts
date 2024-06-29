@@ -5,10 +5,10 @@ from koehnlab import print_utilities
 from koehnlab.io import basis_util
 from koehnlab.spin_hamiltonians import spin_utils
 
-class Basis(Enum):
-    WF0 = "WF0"
-    PROD = "PROD"
-    SO = "SO"
+#class Basis(Enum):
+#    WF0 = "WF0"
+#    PROD = "PROD"
+#    SO = "SO"
 
 def get_2dmat(matrix_3d):
         '''
@@ -39,7 +39,7 @@ def get_property_matrix(path:str,prop:str,basis:str):
     ----------------------
     path -- The path the HDF5 file is stored
     prop -- the operator of which the matrix is extracted from Molpro. 
-            (DMX,DMY,DMZ,LX(),LY(),LZ(),SO)
+            (DMX,DMY,DMZ,LX(),LY(),LZ(),SOC matrix)
     basis -- the basis in which the property matrix should be returned. 
   	     Choose one of the three options of Basis Enum
     Returns:
@@ -79,6 +79,18 @@ def get_property_matrix(path:str,prop:str,basis:str):
 
 
 def get_spin_spat_states(path:str):
+    """
+    Returns the spin states of the system and the associated number of spatial states in an 1d array
+    
+    Args:
+    -----------------------
+    path -- the path to the HDF5 File where the arrays from Molpro are stored
+
+    Returns:
+    -----------------------
+    SpinStates -- the Spin states of the system in descending order
+    SpatStates -- the number of spatial states associated to the spin states
+    """
     with h5py.File(path,'r') as h5file:
         SpinStates = h5file['Spin QNs'][:] # type: ignore
         SpatStates = h5file['Spatial states'][:] # type: ignore
