@@ -24,7 +24,7 @@ ChiVVCGS = 0.37514809612
 cCGS = 29979245800
 
 # 2018 CODATA
-#electron g factor:  ge = 2.002 319 304 362 56(35)  ## actually defined negative
+# electron g factor:  ge = 2.002 319 304 362 56(35)  ## actually defined negative
 # Boltzmann constant: kB = 1.380 649 1e-23 J/K
 # Avogadro constant:  NA = 6.022 140 76 1e23
 # speed of light:     c  = 299792458 m/s
