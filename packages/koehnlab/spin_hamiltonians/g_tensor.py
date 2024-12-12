@@ -6,7 +6,9 @@ from numpy.typing import NDArray
 from .phys_const import muBcm, ge
 
 
-def compute_magnetic_moment_matrix(sMat, lMat, in_bohr_magnetons: bool = True):
+def compute_magnetic_moment_matrix(
+    sMat, lMat, in_bohr_magnetons: bool = True
+) -> NDArray[np.float64]:
     """
     Computes the magnetic moment from the given spin and angular momentum
     Args:
@@ -27,7 +29,7 @@ def compute_magnetic_moment_matrix(sMat, lMat, in_bohr_magnetons: bool = True):
     return muMat
 
 
-def compute_A_matrix(mu_x, mu_y, mu_z, num_states: int) -> NDArray[np.float_]:
+def compute_A_matrix(mu_x, mu_y, mu_z, num_states: int) -> NDArray[np.float64]:
     """
     Computes the A matrix to calculate g-Tensor afterwards
     Procedure taken from: L. F. Chibotaru, L. Ungur; Ab initio calculation of anisotropic magnetic properties of complexes. I. Unique definition of
@@ -59,7 +61,9 @@ def compute_A_matrix(mu_x, mu_y, mu_z, num_states: int) -> NDArray[np.float_]:
     return Amat
 
 
-def compute_g_tensor(Amat, S: float, in_bohr_magnetons: bool = True) -> Tuple[NDArray[np.float_], NDArray[np.float_]]:
+def compute_g_tensor(
+    Amat, S: float, in_bohr_magnetons: bool = True
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Computes the g-tensor as well as the main magnetic axes of the system.
     Procedure taken from: L. F. Chibotaru, L. Ungur; Ab initio calculation of anisotropic magnetic properties of complexes. I. Unique definition of
@@ -80,6 +84,8 @@ def compute_g_tensor(Amat, S: float, in_bohr_magnetons: bool = True) -> Tuple[ND
 
     mB = 1 if in_bohr_magnetons else muBcm
 
-    g_diag = np.array([6 * np.sqrt(A) / (mB * S * (S + 1) * (2 * S + 1)) for A in eigvals])
+    g_diag = np.array(
+        [6 * np.sqrt(A) / (mB * S * (S + 1) * (2 * S + 1)) for A in eigvals]
+    )
 
     return (g_diag, main_axes)

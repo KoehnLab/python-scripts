@@ -87,14 +87,14 @@ def get_property_matrix(path: str, prop: str, basis: Basis):
 
 @dataclass
 class StateMeta:
-    irreps: NDArray[np.int_] = field(
-        default_factory=lambda: np.empty(shape=1, dtype=np.int_)
+    irreps: NDArray[np.intp] = field(
+        default_factory=lambda: np.empty(shape=1, dtype=np.intp)
     )
-    counts: NDArray[np.int_] = field(
-        default_factory=lambda: np.empty(shape=1, dtype=np.int_)
+    counts: NDArray[np.intp] = field(
+        default_factory=lambda: np.empty(shape=1, dtype=np.intp)
     )
-    spin_qns: NDArray[np.float_] = field(
-        default_factory=lambda: np.empty(shape=1, dtype=np.float_)
+    spin_qns: NDArray[np.float64] = field(
+        default_factory=lambda: np.empty(shape=1, dtype=np.float64)
     )
 
 
