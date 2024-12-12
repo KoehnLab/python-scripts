@@ -1,179 +1,163 @@
+import math
+
 import numpy as np
-import math as m
+
 from koehnlab.spin_hamiltonians import spin_utils
 
-def get_propmat_prod(lMat,multiplicity:int,spat_num:int):
-        """
-        Returns the given l matrix in productbasis (spin-spatial basis).
-        Args:
-        ---------------------
-        lMat -- matrix of angular momentum
-        multiplicity -- multiplicity of the system
-        spat_num - number of spatial states
-        Returns:
-        ---------------------
-        Lmat -- Matrix of angular momentum in productbasis 
-        """
-        dim = int(multiplicity*spat_num)
-        Lmat = np.zeros((dim,dim),dtype = complex)
+from .matrix_type import MatrixType
+
+
+def get_propmat_prod(prop, row_mult: int, col_mult: int):
+    """
+    Returns the given (spatial) property matrix in product basis (spin-spatial basis).
+    Args:
+    ---------------------
+    prop -- Property matrix in the basis of 0-th order wavefunctions
+    row_mult -- Multiplicity of the states in the row of property matrix
+    col_mult -- Multiplicity of the states in the cols of the property matrix
+    Returns:
+    ---------------------
+    The property matrix transformed into the corresponding product basis
+    """
+
+    dist_mat = np.zeros(shape=(row_mult, col_mult))
+
+    min_mult = min(row_mult, col_mult)
+    row_offset = row_mult - min_mult
+    col_offset = col_mult - min_mult
+
+    # We assume that the associated property is independent of spin, meaning that states with different
+    # M_S are orthogonal to each other. Therefore, we have to duplicate the prop matrix into the blocks
+    # of the results which correspond to sub-blocks with identical M_S values.
+    dist_mat[row_offset : row_offset + min_mult, col_offset : col_offset + min_mult] = (
+        np.identity(min_mult)
+    )
+
+    return np.kron(dist_mat, prop)
+
+
+def get_spinmat_prod(spin_mat, row_states: int, col_states: int):
+    """
+    Computes the spin matrix elements of the given spin matrix in the productbasis (spin-spatial basis).
+    Blocked over ms number.
+    Args:
+    ------------------------
+    sMat -- spin matrix in spin basis
+    multiplicity -- Multiplicity of the system
+    spat_num -- number of spatial states
+
+    Returns:
+    ------------------------
+    SmatX,SmatY,SmatZ -- spin matrix in the productbasis
+    """
+
+    dist_mat = np.eye(row_states, col_states)
+
+    kron_result = np.kron(spin_mat, dist_mat)
+    return kron_result
+
+    multiplicity = len(spin_mat) 
+
+    dim = int(multiplicity * spat_num)
+    spin = 0.5 * (multiplicity - 1)
+    Smat = np.zeros((dim, dim), dtype=complex)
+    if spin == 0:
+        return Smat
+    else:
         for x in range(dim):
-                for y in range(dim):
-                        ms = m.floor(x/spat_num)
-                        ms_strich = m.floor(y/spat_num)
-                        i = int(x%spat_num)
-                        j = int(y%spat_num)
-                        if ms == ms_strich:
-                            Lmat[x,y] = lMat[i,j]
-        return Lmat
-
-def get_spinmat_prod(sMat,multiplicity:int,spat_num:int):
-        """
-        Computes the spin matrix elements of the given spin matrix in the productbasis (spin-spatial basis).
-        Blocked over ms number.
-        Args:
-        ------------------------
-        sMat -- spin matrix in spin basis
-        multiplicity -- Multiplicity of the system
-        spat_num -- number of spatial states
-
-        Returns:
-        ------------------------
-        SmatX,SmatY,SmatZ -- spin matrix in the productbasis 
-        """
-        dim = int(multiplicity*spat_num)
-        spin = 0.5*(multiplicity-1)
-        Smat = np.zeros((dim,dim),dtype = complex)
-        if spin == 0:
-                return Smat
-        else:
-                for x in range(dim):
-                    for y in range(dim):
-                        ms = m.floor(x/spat_num)
-                        ms_strich = m.floor(y/spat_num)
-                        i = x%spat_num
-                        j = y%spat_num
-                        if i==j:
-                                Smat[x,y] = sMat[ms,ms_strich]
-        return Smat
-
-def get_multispinmat_wf0(spins,coord:str):
-     """
-     Returns the spin matrix of all given Spins in the WF0-basis, the basis of zeroth order wavefunctions
-     for all spins.
-     
-     Args:
-     -----------------------------
-     spins -- array of multiple spin states, sorted in descending order
-     coord -- string with possible values: 'x','y','z'
-     
-     Returns:
-     -----------------------------
-     SMat -- Spin Matrix for multiple spins
-
-     """
-     multiplicities = [2*S+1 for S in spins]
-     dim = int(np.sum(multiplicities))
-     SMat = np.zeros((dim,dim),dtype = complex)
-     lower_bound = 0
-     upper_bound = 0
-     for i,mult in enumerate(multiplicities):
-          spin_mat_coord = spin_utils.spinMat(spins[i],coord)
-          upper_bound += int(mult)
-          assert upper_bound - lower_bound == np.shape(spin_mat_coord)[0]
-          assert upper_bound - lower_bound == np.shape(spin_mat_coord)[1]
-          SMat[lower_bound:upper_bound,lower_bound:upper_bound] = spin_mat_coord
-          lower_bound = upper_bound
-     return SMat
+            for y in range(dim):
+                ms = math.floor(x / spat_num)
+                ms_strich = math.floor(y / spat_num)
+                i = x % spat_num
+                j = y % spat_num
+                if i == j:
+                    Smat[x, y] = spin_mat[ms, ms_strich]
+    return Smat
 
 
-def get_multispinmat_prod(spins,spat_nums,coord:str):
-        """
-        Returns the spin matrix of all given Spins S in the productbasis of spin and spatial basis, 
-        of all spins and all spatial coordinates
+def transform_to_product_basis(matrix, spin_qns, state_nums, matrix_type: MatrixType):
+    """
+    Transforms the given matrix into the product basis
 
-        Args:
-        --------------------------
-        spins -- array of multiple spin states, sorted in descending order
-        spat_nums -- array of numbers of spatial states corresponding to the spin states
-        coord -- x,y,z
+    Args:
+    --------------------------
+    matrix -- The matrix to transform
+    spin_qns -- Array of spin quantum numbers (one entry per state group)
+    state_nums -- Array with the amount of spatial states per state group (one entry per state group)
+    matrix_type -- The type of the input matrix (i.e. whether it is a spin-like matrix or a spatial property matrix)
 
-        Returns:
-        --------------------------
-        Smat -- spin matrix in Productbasis of given spin and spatial states in Js
-        """
-        assert len(spins) == len(spat_nums)
-        multiplicities = [2*S+1 for S in spins]
-        dim = int(np.sum(multiplicities*spat_nums))
-        Smat = np.zeros((dim,dim),dtype = complex)
-        lower_bound = 0
-        upper_bound = 0
-        for i,mult in enumerate(multiplicities):
-            Spin = (mult-1)/2
-            spinmat_coord = spin_utils.spinMat(Spin,coord)
-            spinmat_prod = get_spinmat_prod(spinmat_coord,mult,spat_nums[i])
-            upper_bound += int(mult*spat_nums[i])
-            shape = np.shape(spinmat_prod)
-            diff = upper_bound - lower_bound
-            assert diff == shape[0]
-            assert diff == shape[1]
-            Smat[lower_bound:upper_bound,lower_bound:upper_bound] = spinmat_prod
-            lower_bound = upper_bound
-        return Smat
+    Returns:
+    --------------------------
+    Matrix in the product basis
+    """
+    ngroups = len(spin_qns)
+    assert ngroups == len(state_nums)
 
-def get_multipropmat_prod(lMat,spins,spat_nums):
-        """
-        Calculates the l matrix in the productbasis for multiple spins
+    multiplicities = [int(2 * S) + 1 for S in spin_qns]
 
-        Args:
-        --------------------------
-        lMat -- matrix of angular momentum that needs to be transformed in the basis for multiple spins in (kg*m^2)/s
-        spins -- array of multiple spin states, sorted in ascending order 
-        spat_nums -- array of numbers of spatial states corresponding to the spin states
+    assert len(matrix) == sum(multiplicities) or len(matrix) == sum(state_nums)
 
-        Returns:
-        --------------------------
-        Lmat -- matrix of angular momentum in Productbasis of given spin and spatial states in (kg*m^2)/s
-        """
-        assert len(spins) == len(spat_nums)
-        multiplicities = [2*S+1 for S in spins]
-        dim = int(np.sum(multiplicities*spat_nums))
-        Lmat = np.zeros((dim,dim),dtype = complex)
-        lower_bound = 0
-        upper_bound = 0
-        for mult in multiplicities:
-            i = multiplicities.index(mult)
-            if (i == 0):
-                spat_num = int(spat_nums[i])
-                #print(spat_nums[i])
-                lmat = lMat[:spat_num,:spat_num]
-                propmat_prod = get_propmat_prod(lmat,mult,spat_nums[i])
+    out_group_dims = multiplicities * state_nums
+    dim = int(np.sum(out_group_dims))
+
+    transformed = np.zeros((dim, dim), dtype=matrix.dtype)
+
+    if matrix_type == MatrixType.Spatial:
+        data_group_dims = state_nums
+    else:
+        assert matrix_type == MatrixType.Spin
+        data_group_dims = multiplicities
+
+    for i in range(ngroups):
+        out_skip_rows = int(np.sum(out_group_dims[:i]))
+        out_row_slice = (out_skip_rows, out_skip_rows + out_group_dims[i])
+
+        data_skip_rows = int(np.sum(data_group_dims[:i]))
+        data_row_slice = (data_skip_rows, data_skip_rows + data_group_dims[i])
+        for j in range(ngroups):
+            out_skip_cols = int(np.sum(out_group_dims[:j]))
+            out_col_slice = (out_skip_cols, out_skip_cols + out_group_dims[j])
+
+            data_skip_cols = int(np.sum(data_group_dims[:j]))
+            data_col_slice = (data_skip_cols, data_skip_cols + data_group_dims[j])
+
+            data_slab = matrix[
+                data_row_slice[0] : data_row_slice[1],
+                data_col_slice[0] : data_col_slice[1],
+            ]
+
+            if matrix_type == MatrixType.Spatial:
+                prod_data = get_propmat_prod(
+                    data_slab, row_mult=multiplicities[i], col_mult=multiplicities[j]
+                )
             else:
-                propmat_prod = get_propmat_prod(lMat[int(spat_nums[i-1]):int(sum(spat_nums[:i+1])),int(spat_nums[i-1]):int(sum(spat_nums[:i+1]))],mult,spat_nums[i])
-            upper_bound += int(mult*spat_nums[i])
-            shape = np.shape(propmat_prod)
-            diff = upper_bound-lower_bound
-            assert diff == shape[0]
-            assert diff == shape[1]
-            Lmat[lower_bound:upper_bound,lower_bound:upper_bound] = propmat_prod
-            lower_bound = upper_bound
-        return Lmat
+                assert matrix_type == MatrixType.Spin
+                prod_data = get_spinmat_prod(
+                    data_slab, row_states=state_nums[i], col_states=state_nums[j]
+                )
 
-def transform_so(Mat,eigvecs):
-        """
-        Transforms a given matrix m into the SO basis
+            transformed[
+                out_row_slice[0] : out_row_slice[1], out_col_slice[0] : out_col_slice[1]
+            ] = prod_data
 
-        Args:
-        ---------------------
-        Mat -- matrix which is transformed to SO basis
-        eigvecsh -- eigenvectors of the SO matrix to perform the transformation
-
-        Returns:
-        --------------------
-        Mmat -- matrix m transformed into SO basis
-        """
-        Mmat = np.matmul(np.conj(eigvecs.T),np.matmul(Mat,eigvecs))
-        return Mmat
+    return transformed
 
 
+def similarity_transform(matrix, U, unitary: bool = True):
+    """
+    Performs a similarity transformation of the given matrix
 
+    Args:
+    ---------------------
+    matrix -- The matrix to transform
+    U -- The matrix to use for the similarity transformation
+    unitary -- Whether U is a unitary matrix (this is assumed by default)
 
+    Returns:
+    --------------------
+    The transformed matrix
+    """
+    if unitary:
+        return np.conj(U.T) @ matrix @ U
+
+    return np.linalg.inv(U) @ matrix @ U
