@@ -1,21 +1,30 @@
+from collections.abc import Iterable
+
 import numpy as np
+
 from .phys_const import muBcm
+from .coordinate import Coordinate3D
 
 """ A set of routines for setting up spin Hamiltonians  """
 
-
-def spinMat(S: float, cmp: str):
+def spinMat(S: float, cmp: Coordinate3D | str):
     """Return matrix elements of operator S_i (with i == cmp) for spin quantum number S
     (in multiples of hbar)"""
+
+    if isinstance(cmp, str):
+        cmp = Coordinate3D[cmp] # type: ignore
+
+    assert type(cmp) is Coordinate3D
+
     multiplicity = int(2 * S + 1)
 
     assert S - int(S) in [0, 0.5], "Spin can only take on half-integer numbers"
 
-    if cmp.lower() == "z":
+    if cmp == Coordinate3D.Z:
         # The S_z matrix is a diagonal matrix that contains the possible Ms values
         # on its diagonal (in descending order)
         return np.diag(np.linspace(start=+S, stop=-S, num=multiplicity))
-    elif cmp.lower() == "x":
+    elif cmp == Coordinate3D.X:
         # S_x is expressed in terms of ladder operators:
         # S_x = 0.5 * (S_+ + S_-)
         # Because of the ladder operators, the entries appear on the off-diagonal
@@ -29,7 +38,7 @@ def spinMat(S: float, cmp: str):
             Ms -= 1.0
 
         return Smat
-    elif cmp.lower() == "y":
+    elif cmp == Coordinate3D.Y:
         # S_y is expressed in terms of ladder operators:
         # S_y = -i/2 * (S_+ - S_-)
         # Because of the ladder operators, the entries appear on the off-diagonal
@@ -44,7 +53,29 @@ def spinMat(S: float, cmp: str):
 
         return Smat
 
-    raise RuntimeError("Unknown spin operator component '" + str(cmp) + "'")
+def spin_mat(spin_qns: float | Iterable[float], component: Coordinate3D):
+    """Computes the combined spin matrix for the given spin quantum numbers (block-diagonal)"""
+    if type(spin_qns) is float:
+        spin_qns = [spin_qns]
+
+    multiplicities = [int(2 * S) + 1 for S in spin_qns] # type: ignore
+    full_dim = sum(multiplicities)
+
+    mat = np.zeros(shape=(full_dim, full_dim), dtype=complex)
+
+    offset = 0
+    for mult, S in zip(multiplicities, spin_qns): # type: ignore
+        # S is expected to be integer or half-integer valued
+        assert int(2 * S) == 2 * S
+
+        mat[offset : offset + mult, offset : offset + mult] = spinMat(S, component)
+
+        offset += mult
+
+    return mat
+
+
+
 
 
 def unit(nd):
