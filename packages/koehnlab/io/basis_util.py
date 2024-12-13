@@ -2,8 +2,6 @@ import math
 
 import numpy as np
 
-from koehnlab.spin_hamiltonians import spin_utils
-
 from .matrix_type import MatrixType
 
 
