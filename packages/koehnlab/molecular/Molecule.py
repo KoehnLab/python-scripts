@@ -1,5 +1,7 @@
 from typing import List
 
+from copy import deepcopy
+
 from .Element import Element
 from .Atom import Atom
 
@@ -11,7 +13,7 @@ class Molecule:
     """Class representing a molecule as a list of Atoms"""
 
     def __init__(self, atoms: List[Atom] = []):
-        self.atoms: List[Atom] = atoms
+        self.atoms: List[Atom] = deepcopy(atoms)
 
     def translate(self, delta: ArrayLike) -> None:
         """Translates the entire molecule by the given delta"""
