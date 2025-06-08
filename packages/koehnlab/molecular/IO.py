@@ -16,8 +16,8 @@ def readMolecule(path: str, fmt: FileFormat = FileFormat.XYZ) -> Molecule:
     if fmt != FileFormat.XYZ:
         raise RuntimeError("Unsupported file format %s" % str(fmt))
 
+    molecule = Molecule()
     with open(path, "r") as inputFile:
-        molecule = Molecule()
         lines = inputFile.readlines()
 
         if len(lines) < 3:
@@ -33,7 +33,7 @@ def readMolecule(path: str, fmt: FileFormat = FileFormat.XYZ) -> Molecule:
             if len(components) < 4:
                 raise RuntimeError("Invalid line in XYZ file: '%s':%d" % (path, i + 2))
 
-            molecule.atoms.append(
+            molecule.addAtom(
                 Atom(
                     element=Element[components[0]],
                     coordinates=np.asarray(
@@ -46,9 +46,9 @@ def readMolecule(path: str, fmt: FileFormat = FileFormat.XYZ) -> Molecule:
                 )
             )
 
-        assert len(molecule.atoms) == nAtoms
+    assert len(molecule.atoms) == nAtoms
 
-        return molecule
+    return molecule
 
 
 def writeMolecule(

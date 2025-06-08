@@ -15,6 +15,48 @@ class Molecule:
     def __init__(self, atoms: List[Atom] = []):
         self.atoms: List[Atom] = deepcopy(atoms)
 
+    def nAtoms(self) -> int:
+        """Return number of atoms"""
+        return len(self.atoms)
+
+    def coordinates(self) -> np.ndarray:
+        """Return coordinates as array"""
+        coord = []
+        for currentAtom in self.atoms:
+            coord.append(currentAtom.coordinates)
+        return np.array(coord)
+
+    def masses(self) -> np.ndarray:
+        """Return masses of all atoms"""
+        mass = []
+        for currentAtom in self.atoms:
+            mass.append(currentAtom.element.mass())
+        return np.array(mass)
+
+    def massVec(self) -> np.ndarray:
+        """Return masses of all atoms as mass vector (same mass for x,y,z)"""
+        massV = []
+        for currentAtom in self.atoms:
+            mass = currentAtom.element.mass()
+            massV.append([mass,mass,mass])
+        return np.array(massV)
+
+    def addAtom(self, atom: Atom) -> None:
+        """Add one atom to the current molecule"""
+        self.atoms.append(atom)
+
+    def addAtomList(self, atoms: List[Atom]) -> None:
+        """Add a list of atoms to the current molecule"""
+        self.atoms.extend(atoms)
+
+    def setCoordinates(self, coord: np.ndarray) -> None:
+        """Put (externally modified) coordinates into object, number of atoms must not change"""
+        assert coord.shape[0] == len(self.atoms)
+        assert coord.shape[1] == 3
+        nAtoms = len(self.atoms)
+        for idx in range(nAtoms):
+            self.atoms[idx].coordinates = coord[idx]
+
     def translate(self, delta: ArrayLike) -> None:
         """Translates the entire molecule by the given delta"""
         for currentAtom in self.atoms:
