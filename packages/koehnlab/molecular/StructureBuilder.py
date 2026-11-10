@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -51,6 +51,24 @@ def _neighborLists(spec: StructureSpec) -> List[List[int]]:
         neighbors[j].append(i)
 
     return [sorted(n) for n in neighbors]
+
+
+def _ringBonds(spec: StructureSpec, neighbors: List[List[int]]) -> Set[Tuple[int, int]]:
+    """The bonds that are part of a ring: Those whose atoms remain connected if the bond is removed"""
+    ringBonds: Set[Tuple[int, int]] = set()
+    for i, j in spec.bonds:
+        reached = {i}
+        stack = [i]
+        while stack and j not in reached:
+            current = stack.pop()
+            for neighbor in neighbors[current]:
+                if canonicalBond(current, neighbor) != (i, j) and neighbor not in reached:
+                    reached.add(neighbor)
+                    stack.append(neighbor)
+        if j in reached:
+            ringBonds.add((i, j))
+
+    return ringBonds
 
 
 def _arbitraryPerpendicular(axis: np.ndarray) -> np.ndarray:
@@ -107,8 +125,10 @@ def defaultGuess(spec: StructureSpec, geometry: Optional[str] = None) -> np.ndar
     and torsion are taken from the specification, if it contains the corresponding parameter. Otherwise defaults are used:
     The sum of the covalent radii as bond length, an angle that only depends on the number of neighbors of the central atom
     (120 degrees for 2 or 3, 109.47 degrees for 4 and 90 degrees for more neighbors) and torsions that distribute the
-    substituents of an atom evenly (staggered/planar). Bonds that close rings are ignored, so rings are in general not
-    closed in the result. Atoms are in the same order as in the specification.
+    substituents of an atom evenly (staggered/planar). Along rings, all torsions are cis (0 degrees), so that the ring bends
+    in a consistent direction and (for suitable angles) closes, and substituents of ring atoms point away from the ring.
+    The bond that finally closes a ring is not used for placing atoms, so rings are in general not exactly closed in the result.
+    Atoms are in the same order as in the specification.
 
     For geometry="planar" (default: the geometry of the specification) all atoms are placed in the xy plane, i.e. all torsions
     are 0 or 180 degrees (alternating, unless the specification contains a dihedral). For geometry="linear", all atoms are
@@ -134,6 +154,11 @@ def defaultGuess(spec: StructureSpec, geometry: Optional[str] = None) -> np.ndar
         if z >= len(covalent_radii):
             raise ValueError("No covalent radius known for element %s" % element.symbol())
         radii.append(float(covalent_radii[z]))
+
+    ringBonds = _ringBonds(spec, neighbors)
+
+    def isRingBond(i: int, j: int) -> bool:
+        return canonicalBond(i, j) in ringBonds
 
     coordinates = np.zeros((nAtoms, 3))
     placed = [False] * nAtoms
@@ -165,7 +190,9 @@ def defaultGuess(spec: StructureSpec, geometry: Optional[str] = None) -> np.ndar
         )
 
         # Already placed neighbors of the center, apart from the new atom itself
+        # (neighbors along a ring first, since the ring is what the torsions should follow)
         others = [n for n in neighbors[center] if placed[n] and n != atom]
+        others.sort(key=lambda n: not isRingBond(n, center))
 
         if not others:
             direction = np.array([1.0, 0.0, 0.0] if planar else [0.0, 0.0, 1.0])
@@ -175,11 +202,12 @@ def defaultGuess(spec: StructureSpec, geometry: Optional[str] = None) -> np.ndar
 
         def references(axisAtom: int) -> List[int]:
             """Atoms, bonded to axisAtom, which can be used to measure the torsion"""
-            return [
+            found = [
                 n
                 for n in neighbors[axisAtom]
                 if placed[n] and n != center and n != atom
             ]
+            return sorted(found, key=lambda n: not isRingBond(n, axisAtom))
 
         # Choose the atoms that define the angle and torsion, preferring those for which the specification
         # contains the corresponding parameter
@@ -218,12 +246,30 @@ def defaultGuess(spec: StructureSpec, geometry: Optional[str] = None) -> np.ndar
             torsion = dihedralValues[key]
             if planar:
                 torsion = round(torsion / math.pi) * math.pi
-        elif planar:
-            torsion = (math.pi if reference is not None else 0.0) + (len(others) - 1) * math.pi
         else:
-            # Distribute the substituents of the center evenly around the axis
             step = 2 * math.pi / (len(neighbors[center]) - 1)
-            torsion = (math.pi if reference is not None else 0.0) + (len(others) - 1) * step
+            children = [n for n in others if n != axisAtom]
+
+            if (
+                reference is not None
+                and isRingBond(center, axisAtom)
+                and isRingBond(axisAtom, reference)
+            ):
+                # Following a ring: The first ring bond continues the ring in the same direction (cis), everything else is
+                # distributed around the axis (for a center with three neighbors: away from the ring)
+                hasRingChild = any(isRingBond(n, center) for n in children)
+                if isRingBond(atom, center) and not hasRingChild:
+                    torsion = 0.0
+                else:
+                    torsion = step * (1 + len(children) - (1 if hasRingChild else 0))
+            elif planar:
+                torsion = (math.pi if reference is not None else 0.0) + (len(others) - 1) * math.pi
+            else:
+                # Distribute the substituents of the center evenly around the axis
+                torsion = (math.pi if reference is not None else 0.0) + (len(others) - 1) * step
+
+            if planar:
+                torsion = round(torsion / math.pi) * math.pi
 
         coordinates[atom] = _placeAtom(
             coordinates, center, axisAtom, reference, distance, angle, torsion, planar

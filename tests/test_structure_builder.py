@@ -145,6 +145,44 @@ class TestDefaultGuess(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(coords)))
         assert_almost_equal(bondAngles(coords, [(0, 1, 2)]), [math.pi])
 
+    def test_rings_are_closed_and_planar(self):
+        bonds = "\n".join("C%d - C%d" % (i, i % 6 + 1) for i in range(1, 7))
+        hydrogens = "\n".join("C%d - H%d" % (i, i) for i in range(1, 7))
+        spec = _parse(bonds + "\n" + hydrogens)
+        coords = defaultGuess(spec)
+        index = {label: i for i, label in enumerate(spec.labels)}
+
+        # All ring bonds have the default length, including the one that closes the ring
+        ring = [index["C%d" % i] for i in range(1, 7)]
+        for k in range(6):
+            self.assertAlmostEqual(
+                float(np.linalg.norm(coords[ring[k]] - coords[ring[(k + 1) % 6]])), 1.52, places=6
+            )
+
+        # The hydrogens point away from the ring and all atoms are in one plane
+        center = coords[ring].mean(axis=0)
+        for i in range(1, 7):
+            carbon, hydrogen = coords[index["C%d" % i]], coords[index["H%d" % i]]
+            self.assertGreater(np.linalg.norm(hydrogen - center), np.linalg.norm(carbon - center) + 0.9)
+        self.assertAlmostEqual(float(np.linalg.svd(coords - coords.mean(axis=0))[1][-1]), 0, places=8)
+
+    def test_ring_with_substituent_chain(self):
+        # Atoms that are not part of the ring don't disturb it
+        spec = _parse(
+            "C1 - C2\nC2 - C3\nC3 - C4\nC4 - C5\nC5 - C6\nC6 - C1\nC1 - C7\nC7 - C8\nC3 - C9\nC9 - C10\n"
+            "C2 - H1\nC4 - H2\nC5 - H3\nC6 - H4\n"
+        )
+        coords = defaultGuess(spec)
+        index = {label: i for i, label in enumerate(spec.labels)}
+        for i in range(1, 7):
+            self.assertAlmostEqual(
+                float(
+                    np.linalg.norm(coords[index["C%d" % i]] - coords[index["C%d" % (i % 6 + 1)]])
+                ),
+                1.52,
+                places=6,
+            )
+
     def test_ring_is_placed(self):
         coords = defaultGuess(_parse("C1 - C2\nC2 - C3\nC3 - C1"))
         self.assertTrue(np.all(np.isfinite(coords)))
