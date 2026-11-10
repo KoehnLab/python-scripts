@@ -63,6 +63,18 @@ def readMolecule(path: str, fmt: FileFormat = FileFormat.XYZ) -> Molecule:
     )
 
 
+def generateLabels(elements: Sequence[Element]) -> List[str]:
+    """Generates a label for every atom by appending a per-element counter to the element symbol in order of
+    appearance (e.g. C1, H1, C2, H2, ...)"""
+    counters: Dict[Element, int] = {}
+    labels: List[str] = []
+    for element in elements:
+        counters[element] = counters.get(element, 0) + 1
+        labels.append("%s%d" % (element.symbol(), counters[element]))
+
+    return labels
+
+
 _LABEL_PATTERN = re.compile(r"^([A-Za-z]+)(\d+)$")
 
 
@@ -100,11 +112,7 @@ def readLabeledMolecule(
     if all(labeled):
         labels = list(tokens)
     elif not any(labeled):
-        counters: Dict[Element, int] = {}
-        labels = []
-        for element in elements:
-            counters[element] = counters.get(element, 0) + 1
-            labels.append("%s%d" % (element.symbol(), counters[element]))
+        labels = generateLabels(elements)
     else:
         raise RuntimeError(
             "XYZ file '%s' mixes labeled and unlabeled atoms" % path
