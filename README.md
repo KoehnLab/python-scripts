@@ -10,6 +10,8 @@ This repository is structured in the following way:
   instructions.
 - `scripts`: This directory contains Python scripts that can be executed themselves to perform specific tasks. Some of these scripts may depend on the
   `koehnlab` package, so make sure you have set it up correctly.
+- `docs`: This directory contains documentation of the more involved tools, for example the [structure builder](docs/structure_builder.md) that
+  generates XYZ files from structure parameters.
 - `tests`: This directory contains (unit) tests for the provided functionality. You are encouraged to write test cases for your code to ensure that it
   works correctly and future changes won't break things. See the respective [README](tests/README.md) for more information on that.
 

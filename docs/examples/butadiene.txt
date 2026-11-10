@@ -1,0 +1,17 @@
+# trans-1,3-butadiene: planar, with the dihedral angle between the double bonds
+@planar
+
+C1 - C2 1.34          # double bonds
+C3 - C4 1.34
+C2 - C3 1.46          # single bond
+C1 - C2 - C3 123.5
+C2 - C3 - C4 123.5
+C1 - C2 - C3 - C4 180
+
+# hydrogens (connectivity only: their positions follow from the defaults)
+C1 - H1
+C1 - H2
+C2 - H3
+C3 - H4
+C4 - H5
+C4 - H6

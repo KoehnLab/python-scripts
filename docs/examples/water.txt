@@ -1,0 +1,4 @@
+# Water: two bond lengths and the angle between them
+O1 - H1 0.96
+O1 - H2 0.96
+H1 - O1 - H2 104.5

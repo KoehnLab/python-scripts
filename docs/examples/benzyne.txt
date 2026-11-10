@@ -1,0 +1,22 @@
+# Benzyne (C2v, planar). C1 and C2 are the two dehydro carbons.
+# With @planar (or --planar) the molecule lies in the xy plane. The C2 axis (through the middle of C1-C2 and of C4-C5)
+# is the y axis, and the mirror plane perpendicular to the molecule is the yz plane (normal x).
+@planar
+
+C1 - C2 1.27067
+C2 - C3 1.39887
+C3 - C4 1.41259
+C4 - C5 1.41751
+C5 - C6                  # ring bonds without a value: equivalent to C3-C4 and C2-C3 by symmetry
+C6 - C1
+C3 - H1 1.09239
+C4 - H2 1.09507
+C5 - H3
+C6 - H4
+C1 - C2 - C3 126.41
+C2 - C3 - H1 126.37
+C3 - C4 - H2 118.85
+
+# Only the atoms that are exchanged are given, "..." lets the program infer the rest from the bonds
+@symmetry C2(y): C1<->C2, C3<->C6, ...
+@symmetry sigma(x): C1<->C2, C3<->C6, ...

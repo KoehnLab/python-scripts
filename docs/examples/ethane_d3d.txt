@@ -1,0 +1,8 @@
+# Staggered ethane (D3d), to be used together with ethane_guess.xyz:
+#   build_structure.py -i ethane_d3d.txt -g ethane_guess.xyz -o ethane.xyz
+# Three parameters determine the whole molecule.
+C1 - C2 1.53
+C1 - H1 1.09
+H1 - C1 - C2 111
+
+@group D3d       # all symmetry operations of D3d; the starting geometry tells which atoms they exchange

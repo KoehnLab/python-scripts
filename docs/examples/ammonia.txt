@@ -1,0 +1,8 @@
+# Ammonia (C3v). Only one N-H bond and one H-N-H angle are given, the others are equivalent by symmetry.
+N1 - H1 1.01
+N1 - H2
+N1 - H3
+H1 - N1 - H2 106.7
+
+@symmetry C3(z): H1->H2->H3      # rotation by 120 degrees about z moves H1 to H2, H2 to H3 and H3 to H1
+@symmetry sigma(y): H2<->H3      # mirror plane xz exchanges H2 and H3 (N and H1 stay where they are)
