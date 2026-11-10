@@ -738,5 +738,55 @@ class TestSymmetryInference(unittest.TestCase):
             buildStructure(_parse("C1 - C2 1.53\nC1 - H1 1.09\nC1 - H2\nC1 - H3\nC2 - H4\nC2 - H5\nC2 - H6\n@group D3d"))
 
 
+# Benzyne (planar, C2v): C1 and C2 are the dehydro carbons. The molecular plane is the xy plane, the C2 axis (through the middle of
+# C1-C2 and C4-C5) is the y axis and the mirror plane perpendicular to the molecule is the yz plane
+BENZYNE = """
+C1 - C2 1.27067
+C2 - C3 1.39887
+C3 - C4 1.41259
+C4 - C5 1.41751
+C5 - C6
+C6 - C1
+C3 - H1 1.09239
+C4 - H2 1.09507
+C5 - H3
+C6 - H4
+C1 - C2 - C3 126.41
+C2 - C3 - H1 126.37
+C3 - C4 - H2 118.85
+@planar
+@symmetry C2(y): C1<->C2, C3<->C6, ...
+@symmetry sigma(x): C1<->C2, C3<->C6, ...
+"""
+
+
+class TestRings(unittest.TestCase):
+
+    def test_benzyne(self):
+        result = buildStructure(_parse(BENZYNE))
+        coords = result.molecule.coordinates()
+        index = {label: i for i, label in enumerate(result.labels)}
+
+        self.assertTrue(result.converged, result.format())
+        assert_almost_equal(coords[:, 2], np.zeros(len(coords)), decimal=10)
+
+        # No folded ring: The closest atoms are bonded atoms, and the ring angles add up to a hexagon. The angles that were not
+        # given follow from the other parameters (sum of 720 degrees and the symmetry)
+        distances = np.linalg.norm(coords[:, None] - coords[None], axis=2)
+        np.fill_diagonal(distances, np.inf)
+        self.assertGreater(distances.min(), 1.05)
+
+        ring = [index["C%d" % i] for i in range(1, 7)]
+        angles = bondAngles(coords, [(ring[k - 1], ring[k], ring[(k + 1) % 6]) for k in range(6)])
+        assert_almost_equal(
+            np.degrees(angles), [126.41, 126.41, 111.2, 122.4, 122.4, 111.2], decimal=0
+        )
+        self.assertAlmostEqual(float(np.degrees(angles).sum()), 720.0, places=6)
+
+        # C2v symmetry: C3/C6 and C4/C5 are equivalent
+        for a, b in (("C3", "C6"), ("C4", "C5"), ("H1", "H4"), ("H2", "H3")):
+            assert_almost_equal(coords[index[a]] * [-1, 1, 1], coords[index[b]], decimal=6)
+
+
 if __name__ == "__main__":
     unittest.main()
