@@ -293,6 +293,8 @@ _RESTRAINT_WEIGHT = 1e-3
 _CLASH_WEIGHT = 1e-2
 # Non-bonded atoms (separated by at least three bonds) closer than this factor times the sum of van der Waals radii repel
 _CLASH_FACTOR = 0.7
+# The same for atoms that are bonded to a common atom, with the sum of the covalent radii (these atoms are much closer)
+_CLASH_FACTOR_1_3 = 0.9
 
 # Maximum deviations of bond lengths (Angstrom) and angles (radians) for a structure to count as converged
 _LENGTH_TOLERANCE = 1e-4
@@ -522,7 +524,7 @@ class _Problem:
         angleRef = bondAngles(reference, restraintAngles)
         dihedralRef = dihedralAngles(reference, restraintDihedrals)
 
-        # Pairs of atoms that are at least three bonds apart can clash
+        # Pairs of atoms that are at least two bonds apart can clash
         graphDistance = np.full((self.nAtoms, self.nAtoms), np.inf)
         np.fill_diagonal(graphDistance, 0)
         for i, j in spec.bonds:
@@ -534,9 +536,14 @@ class _Problem:
         vdw = np.array([vdw_radii[e.atomicNumber()] for e in spec.elements])
         vdw = np.where(np.isfinite(vdw), vdw, 2.0)
         i, j = np.triu_indices(self.nAtoms, k=1)
-        keep = graphDistance[i, j] >= 3
+        keep = graphDistance[i, j] >= 2
         clashPairs = np.column_stack((i[keep], j[keep])).reshape(-1, 2)
-        clashDistances = _CLASH_FACTOR * (vdw[i[keep]] + vdw[j[keep]])
+        covalent = np.array([covalent_radii[e.atomicNumber()] for e in spec.elements])
+        clashDistances = np.where(
+            graphDistance[i[keep], j[keep]] >= 3,
+            _CLASH_FACTOR * (vdw[i[keep]] + vdw[j[keep]]),
+            _CLASH_FACTOR_1_3 * (covalent[i[keep]] + covalent[j[keep]]),
+        )
 
         self.soft = [
             _Block(

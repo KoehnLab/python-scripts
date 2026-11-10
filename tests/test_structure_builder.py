@@ -251,6 +251,21 @@ class TestBuildStructure(unittest.TestCase):
             self.assertEqual(analytic.shape, (len(problem.residuals(x, restraints)), x.size))
             assert_almost_equal(analytic, numeric, decimal=3)
 
+    def test_clash_terms(self):
+        # Chain C1-C2-C3-C4-C5: C1/C3 are two bonds apart, C1/C4 three
+        spec = _parse("C1 - C2 1.5\nC2 - C3 1.5\nC3 - C4 1.5\nC4 - C5 1.5")
+        start = defaultGuess(spec)
+        clashes = _Problem(spec, start).soft[3]
+
+        pairs = {tuple(row) for row in clashes.indices.tolist()}
+        self.assertEqual(pairs, {(0, 2), (1, 3), (2, 4), (0, 3), (1, 4), (0, 4)})
+
+        # Fine in the default geometry, but atoms that are too close repel
+        self.assertAlmostEqual(float(np.abs(clashes.residuals(start)).max()), 0.0)
+        folded = start.copy()
+        folded[2] = folded[0] + 0.1
+        self.assertGreater(np.abs(clashes.residuals(folded)).max(), 5)
+
     def test_water(self):
         result = buildStructure(_parse("O1 - H1 0.96\nO1 - H2 0.97\nH1 - O1 - H2 104.5"))
 
