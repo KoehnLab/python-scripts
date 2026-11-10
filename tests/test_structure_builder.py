@@ -824,6 +824,13 @@ class TestRings(unittest.TestCase):
         for a, b in (("C3", "C6"), ("C4", "C5"), ("H1", "H4"), ("H2", "H3")):
             assert_almost_equal(coords[index[a]] * [-1, 1, 1], coords[index[b]], decimal=6)
 
+    def test_missing_hydrogen_bonds_are_reported(self):
+        # C1-H5 and C2-H2 are wrong: Benzyne has no hydrogen on C1 and C2, and H2 sits on C4 only. This breaks the symmetry, which
+        # the error message has to point out
+        text = BENZYNE.replace("C5 - C6\n", "C5 - C6\nC1 - H5\nC2 - H2\n")
+        with self.assertRaisesRegex(StructureSpecError, "C2\\(y\\).*breaks down at H5 \\(H, 1 bond: C1\\).*C1 is moved to C2.*H2 has different bonds \\(H2: 2 bonds: C2, C4\\)"):
+            buildStructure(_parse(text))
+
 
 if __name__ == "__main__":
     unittest.main()

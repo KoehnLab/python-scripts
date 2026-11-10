@@ -48,9 +48,10 @@ def _cycles(permutation: Sequence[int]) -> List[Tuple[int, ...]]:
 
 def _candidates(
     operation: SymmetryOperation, spec: StructureSpec
-) -> List[Tuple[int, ...]]:
+) -> Tuple[List[Tuple[int, ...]], str]:
     """All permutations of the atoms that preserve the elements and bonds, contain the atoms given in the operation and have
-    cycles whose lengths are compatible with the order of the operation"""
+    cycles whose lengths are compatible with the order of the operation. If there are none, the second return value explains
+    where the search failed."""
     nAtoms = spec.nAtoms()
     neighbors: List[Set[int]] = [set() for _ in range(nAtoms)]
     for i, j in spec.bonds:
@@ -108,12 +109,46 @@ def _candidates(
                 order.append(neighbor)
     order = [atom for atom in order if image[atom] == -1]
 
+    def bondsOf(atom: int) -> str:
+        count = len(neighbors[atom])
+        return "%d bond%s: %s" % (count, "" if count == 1 else "s", ", ".join(labels[n] for n in sorted(neighbors[atom])))
+
+    def _explainFailure(atom: int) -> str:
+        """Describes why no image can be found for the atom, in the current state of the search"""
+        text = "The mapping breaks down at %s (%s, %s)" % (labels[atom], spec.elements[atom].symbol(), bondsOf(atom))
+
+        anchor = next((b for b in sorted(neighbors[atom]) if image[b] != -1), None)
+        if anchor is None:
+            return text + ": no unused atom with the same element and number of bonds is available"
+
+        candidates = [
+            t
+            for t in sorted(neighbors[image[anchor]])
+            if spec.elements[t] == spec.elements[atom] and preimage[t] == -1
+        ]
+        text += ": %s is moved to %s, so %s would have to be moved to an atom of the same element bonded to %s" % (
+            labels[anchor],
+            labels[image[anchor]],
+            labels[atom],
+            labels[image[anchor]],
+        )
+        if not candidates:
+            return text + ", but there is none"
+        return text + ", but %s %s (%s)" % (
+            ", ".join(labels[t] for t in candidates),
+            "has different bonds" if len(candidates) == 1 else "have different bonds",
+            "; ".join("%s: %s" % (labels[t], bondsOf(t)) for t in candidates),
+        )
+
     order_k = _matrixOrder(operation.matrix)
     solutions: List[Tuple[int, ...]] = []
     steps = 0
+    # The atom, at which the search got furthest without finding a possible image (position in the search and explanation)
+    stuck: Tuple[int, str] = (-1, "")
+    rejectedByOrder = 0
 
     def search(position: int) -> None:
-        nonlocal steps
+        nonlocal steps, stuck, rejectedByOrder
         steps += 1
         if len(solutions) >= _MAX_CANDIDATES or steps > _MAX_SEARCH_STEPS:
             return
@@ -123,11 +158,13 @@ def _candidates(
             if any(image[j] not in neighbors[image[i]] for i, j in spec.bonds):
                 return
             if order_k is not None and any(order_k % len(c) for c in _cycles(image)):
+                rejectedByOrder += 1
                 return
             solutions.append(tuple(image))
             return
 
         atom = order[position]
+        found = False
         # Try the atom itself first and then the others, so that the result is deterministic
         for target in [atom] + [t for t in range(nAtoms) if t != atom]:
             if preimage[target] != -1 or signature[target] != signature[atom]:
@@ -137,11 +174,15 @@ def _candidates(
             if any(preimage[d] != -1 and preimage[d] not in neighbors[atom] for d in neighbors[target]):
                 continue
 
+            found = True
             image[atom] = target
             preimage[target] = atom
             search(position + 1)
             image[atom] = -1
             preimage[target] = -1
+
+        if not found and position > stuck[0]:
+            stuck = (position, _explainFailure(atom))
 
     search(0)
 
@@ -150,7 +191,17 @@ def _candidates(
             "Too many possible atom mappings for the symmetry operation %s, specify more of its atoms" % operation.name
         )
 
-    return solutions
+    explanation = ""
+    if not solutions:
+        if rejectedByOrder and stuck[0] < 0:
+            explanation = (
+                "Atom mappings exist, but their cycles are not compatible with the operation (applying it %s times has to restore "
+                "all atoms)" % order_k
+            )
+        elif stuck[0] >= 0:
+            explanation = stuck[1] + ". Check for missing or extra bonds around these atoms"
+
+    return solutions, explanation
 
 
 def _describe(permutation: Sequence[int], labels: Sequence[str], limit: int = 4) -> str:
@@ -166,12 +217,12 @@ def completeOperation(
     are compatible with the order of the operation. If this still leaves several possibilities, the coordinates of a starting
     geometry (in the frame of the operation) can select one by choosing the permutation that the matrix of the operation
     maps best onto the geometry. If it is still ambiguous, an error is raised."""
-    candidates = _candidates(operation, spec)
+    candidates, explanation = _candidates(operation, spec)
 
     if not candidates:
         raise StructureSpecError(
-            "No atom mapping exists for the symmetry operation %s that is compatible with the bonds and the given atoms"
-            % operation.name
+            "No atom mapping exists for the symmetry operation %s that is compatible with the bonds and the given atoms.%s"
+            % (operation.name, " " + explanation if explanation else "")
         )
 
     if len(candidates) > 1:
