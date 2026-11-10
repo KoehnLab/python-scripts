@@ -8,6 +8,7 @@ from koehnlab.molecular.StructureParser import parseStructureSpecString
 from koehnlab.molecular import Atom, Molecule, readLabeledMolecule
 from koehnlab.molecular.StructureParser import StructureSpecError
 from koehnlab.molecular.StructureBuilder import (
+    _Problem,
     buildStructure,
     defaultGuess,
     resolveSpec,
@@ -191,6 +192,26 @@ class TestBuildStructure(unittest.TestCase):
     def _byLabel(self, result):
         order = [self.labels.index(label) for label in result.labels]
         return self.biphenyl.coordinates()[order]
+
+    def test_jacobian(self):
+        # Compare the blockwise derivatives to brute-force derivatives of the complete residual vector
+        spec = _parse(BUTADIENE + "\nC1 - C4 3.0\nH1 - C1 - C2 119")
+        start = defaultGuess(spec)
+        problem = _Problem(spec, start)
+        x = (start + np.random.default_rng(1).normal(scale=0.05, size=start.shape)).ravel()
+
+        for restraints in (True, False):
+            analytic = problem.jacobian(x, restraints)
+            numeric = np.zeros_like(analytic)
+            for k in range(x.size):
+                step = np.zeros(x.size)
+                step[k] = 1e-6
+                numeric[:, k] = (
+                    problem.residuals(x + step, restraints) - problem.residuals(x - step, restraints)
+                ) / 2e-6
+
+            self.assertEqual(analytic.shape, (len(problem.residuals(x, restraints)), x.size))
+            assert_almost_equal(analytic, numeric, decimal=3)
 
     def test_water(self):
         result = buildStructure(_parse("O1 - H1 0.96\nO1 - H2 0.97\nH1 - O1 - H2 104.5"))

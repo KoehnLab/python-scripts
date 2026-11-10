@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -314,54 +314,119 @@ def resolveSpec(
     return StructureSpec(labels, elements, sorted(bonds), constraints)
 
 
+# Step for the numerical derivatives of the residuals
+_DERIVATIVE_STEP = 1e-6
+
+
+class _Block:
+    """A set of residuals that each only depend on the positions of a few atoms (e.g. all bond lengths). evaluate maps the
+    positions of these atoms, an array of shape (number of residuals, number of atoms per residual, 3), to the residuals"""
+
+    def __init__(self, indices: np.ndarray, evaluate: Callable[[np.ndarray], np.ndarray]):
+        self.indices = indices
+        self.evaluate = evaluate
+
+    def size(self) -> int:
+        return len(self.indices)
+
+    def residuals(self, coordinates: np.ndarray) -> np.ndarray:
+        return self.evaluate(coordinates[self.indices])
+
+    def addJacobian(self, coordinates: np.ndarray, jacobian: np.ndarray, firstRow: int) -> None:
+        """Adds the derivatives of the residuals with respect to all coordinates to the given rows of the jacobian
+        (dense matrix with three columns per atom), using central differences."""
+        positions = coordinates[self.indices]
+        rows = firstRow + np.arange(self.size())
+        step = _DERIVATIVE_STEP
+
+        for slot in range(self.indices.shape[1]):
+            for axis in range(3):
+                forward = positions.copy()
+                backward = positions.copy()
+                forward[:, slot, axis] += step
+                backward[:, slot, axis] -= step
+                derivative = (self.evaluate(forward) - self.evaluate(backward)) / (2 * step)
+                jacobian[rows, 3 * self.indices[:, slot] + axis] += derivative
+
+
+def _viaIndices(
+    function: Callable[[np.ndarray, Sequence[Tuple[int, ...]]], np.ndarray], atomsPerRow: int
+) -> Callable[[np.ndarray], np.ndarray]:
+    """Turns a function of coordinates and atom indices into a function of the positions of the atoms of each row"""
+
+    def evaluate(positions: np.ndarray) -> np.ndarray:
+        rows = positions.shape[0]
+        indices = np.arange(rows * atomsPerRow).reshape(rows, atomsPerRow)
+        return function(positions.reshape(-1, 3), indices)  # type: ignore[arg-type]
+
+    return evaluate
+
+
 class _Problem:
-    """Residual function, which is zero if all specified parameters are fulfilled, together with weak terms that keep
-    everything else close to a reference geometry"""
+    """Residuals, which are zero if all specified parameters are fulfilled (constraints), and weak terms that keep
+    everything else close to a reference geometry (soft terms)"""
 
     def __init__(self, spec: StructureSpec, reference: np.ndarray):
         self.nAtoms = spec.nAtoms()
 
-        specified = {len(c.indices): [] for c in spec.constraints}  # type: Dict[int, List[Constraint]]
+        specified = {2: [], 3: [], 4: []}  # type: Dict[int, List[Constraint]]
         for constraint in spec.constraints:
             specified[len(constraint.indices)].append(constraint)
 
         def arrays(n: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-            items = specified.get(n, [])
+            items = specified[n]
             return (
                 np.array([c.indices for c in items], dtype=int).reshape(-1, n),
                 np.array([c.value for c in items], dtype=float),
                 np.array([c.weight for c in items], dtype=float),
             )
 
-        self.bonds, self.bondTargets, self.bondWeights = arrays(2)
-        self.angles, self.angleTargets, self.angleWeights = arrays(3)
-        self.dihedrals, self.dihedralTargets, self.dihedralWeights = arrays(4)
+        bonds, bondTargets, bondWeights = arrays(2)
+        angles, angleTargets, angleWeights = arrays(3)
+        dihedrals, dihedralTargets, dihedralWeights = arrays(4)
+
+        self.constraints = [
+            _Block(
+                bonds,
+                lambda P: bondWeights
+                * (_viaIndices(bondLengths, 2)(P) - bondTargets)
+                / _LENGTH_SCALE,
+            ),
+            _Block(
+                angles,
+                lambda P: angleWeights
+                * (_viaIndices(bondAngles, 3)(P) - angleTargets)
+                / _ANGLE_SCALE,
+            ),
+            _Block(
+                dihedrals,
+                lambda P: dihedralWeights
+                * wrapAngle(_viaIndices(dihedralAngles, 4)(P) - dihedralTargets)
+                / _ANGLE_SCALE,
+            ),
+        ]
 
         # Restraints for everything that is not specified
         def unspecified(candidates: Sequence[Tuple[int, ...]], fixed: np.ndarray) -> np.ndarray:
             fixedSet = {tuple(row) for row in fixed.tolist()}
-            return np.array(
-                [c for c in candidates if c not in fixedSet], dtype=int
-            ).reshape(-1, len(candidates[0]) if candidates else 1)
+            return np.array([c for c in candidates if c not in fixedSet], dtype=int)
 
-        self.restraintBonds = unspecified(spec.bonds, self.bonds).reshape(-1, 2)
-        self.restraintAngles = unspecified(
-            findAngles(spec.bonds, self.nAtoms), self.angles
-        ).reshape(-1, 3)
+        restraintBonds = unspecified(spec.bonds, bonds).reshape(-1, 2)
+        restraintAngles = unspecified(findAngles(spec.bonds, self.nAtoms), angles).reshape(-1, 3)
 
         # The torsion about a bond is a single degree of freedom, but there are many (redundant) dihedrals around it. So only
         # one dihedral per bond is restrained and none if a dihedral about this bond is specified anyway
-        specifiedBonds = {frozenset(row[1:3]) for row in self.dihedrals.tolist()}
+        specifiedBonds = {frozenset(row[1:3]) for row in dihedrals.tolist()}
         torsions: Dict[frozenset, Tuple[int, ...]] = {}
         for dihedral in sorted(findDihedrals(spec.bonds, self.nAtoms)):
             central = frozenset(dihedral[1:3])
             if central not in specifiedBonds and central not in torsions:
                 torsions[central] = dihedral
-        self.restraintDihedrals = np.array(list(torsions.values()), dtype=int).reshape(-1, 4)
+        restraintDihedrals = np.array(list(torsions.values()), dtype=int).reshape(-1, 4)
 
-        self.restraintBondTargets = bondLengths(reference, self.restraintBonds)
-        self.restraintAngleTargets = bondAngles(reference, self.restraintAngles)
-        self.restraintDihedralTargets = dihedralAngles(reference, self.restraintDihedrals)
+        bondRef = bondLengths(reference, restraintBonds)
+        angleRef = bondAngles(reference, restraintAngles)
+        dihedralRef = dihedralAngles(reference, restraintDihedrals)
 
         # Pairs of atoms that are at least three bonds apart can clash
         graphDistance = np.full((self.nAtoms, self.nAtoms), np.inf)
@@ -376,48 +441,55 @@ class _Problem:
         vdw = np.where(np.isfinite(vdw), vdw, 2.0)
         i, j = np.triu_indices(self.nAtoms, k=1)
         keep = graphDistance[i, j] >= 3
-        self.clashPairs = np.column_stack((i[keep], j[keep])).reshape(-1, 2)
-        self.clashDistances = _CLASH_FACTOR * (vdw[i[keep]] + vdw[j[keep]])
+        clashPairs = np.column_stack((i[keep], j[keep])).reshape(-1, 2)
+        clashDistances = _CLASH_FACTOR * (vdw[i[keep]] + vdw[j[keep]])
 
-    def residuals(
-        self, x: np.ndarray, restraints: bool = True
-    ) -> np.ndarray:
-        coordinates = x.reshape(-1, 3)
-
-        parts = [
-            self.bondWeights
-            * (bondLengths(coordinates, self.bonds) - self.bondTargets)
-            / _LENGTH_SCALE,
-            self.angleWeights
-            * (bondAngles(coordinates, self.angles) - self.angleTargets)
-            / _ANGLE_SCALE,
-            self.dihedralWeights
-            * wrapAngle(dihedralAngles(coordinates, self.dihedrals) - self.dihedralTargets)
-            / _ANGLE_SCALE,
+        self.soft = [
+            _Block(
+                restraintBonds,
+                lambda P: _RESTRAINT_WEIGHT
+                * (_viaIndices(bondLengths, 2)(P) - bondRef)
+                / _LENGTH_SCALE,
+            ),
+            _Block(
+                restraintAngles,
+                lambda P: _RESTRAINT_WEIGHT
+                * (_viaIndices(bondAngles, 3)(P) - angleRef)
+                / _ANGLE_SCALE,
+            ),
+            _Block(
+                restraintDihedrals,
+                lambda P: _RESTRAINT_WEIGHT
+                * wrapAngle(_viaIndices(dihedralAngles, 4)(P) - dihedralRef)
+                / _ANGLE_SCALE,
+            ),
+            _Block(
+                clashPairs,
+                lambda P: _CLASH_WEIGHT
+                * np.maximum(0.0, clashDistances - _viaIndices(bondLengths, 2)(P))
+                / _LENGTH_SCALE,
+            ),
         ]
 
-        if restraints:
-            parts += [
-                _RESTRAINT_WEIGHT
-                * (bondLengths(coordinates, self.restraintBonds) - self.restraintBondTargets)
-                / _LENGTH_SCALE,
-                _RESTRAINT_WEIGHT
-                * (bondAngles(coordinates, self.restraintAngles) - self.restraintAngleTargets)
-                / _ANGLE_SCALE,
-                _RESTRAINT_WEIGHT
-                * wrapAngle(
-                    dihedralAngles(coordinates, self.restraintDihedrals)
-                    - self.restraintDihedralTargets
-                )
-                / _ANGLE_SCALE,
-                _CLASH_WEIGHT
-                * np.maximum(
-                    0.0, self.clashDistances - bondLengths(coordinates, self.clashPairs)
-                )
-                / _LENGTH_SCALE,
-            ]
+    def _blocks(self, restraints: bool) -> List[_Block]:
+        return self.constraints + self.soft if restraints else self.constraints
 
-        return np.concatenate(parts)
+    def residuals(self, x: np.ndarray, restraints: bool = True) -> np.ndarray:
+        coordinates = x.reshape(-1, 3)
+        return np.concatenate([block.residuals(coordinates) for block in self._blocks(restraints)])
+
+    def jacobian(self, x: np.ndarray, restraints: bool = True) -> np.ndarray:
+        coordinates = x.reshape(-1, 3)
+        blocks = self._blocks(restraints)
+        jacobian = np.zeros((sum(block.size() for block in blocks), x.size))
+
+        row = 0
+        for block in blocks:
+            if block.size():
+                block.addJacobian(coordinates, jacobian, row)
+            row += block.size()
+
+        return jacobian
 
 
 def _report(spec: StructureSpec, coordinates: np.ndarray) -> List[ParameterReport]:
@@ -495,11 +567,19 @@ def buildStructure(
 
         # First solve with the weak terms and then once more without them to remove the compromises they cause
         solution = least_squares(
-            problem.residuals, x0.ravel(), method="trf", max_nfev=1000, xtol=1e-14, ftol=1e-14, gtol=1e-14
+            problem.residuals,
+            x0.ravel(),
+            jac=problem.jacobian,
+            method="trf",
+            max_nfev=1000,
+            xtol=1e-14,
+            ftol=1e-14,
+            gtol=1e-14,
         )
         solution = least_squares(
             lambda x: problem.residuals(x, restraints=False),
             solution.x,
+            jac=lambda x: problem.jacobian(x, restraints=False),
             method="trf",
             max_nfev=1000,
             xtol=1e-14,
