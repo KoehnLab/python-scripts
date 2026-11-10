@@ -29,6 +29,13 @@ Format of the parameter file (lengths in Angstrom, angles in degrees, everything
     C1 - C2 - C3 - C4 180     # dihedral angle
     C1 - C2 1.34 w=2          # parameters can be weighted (default: 1)
     @planar                   # all atoms lie in one plane (or: @linear for atoms on a line)
+    @symmetry C2(z): C1<->C3, H1<->H3     # the molecule is invariant under a rotation about z that exchanges these atoms
+
+Symmetry operations are i, sigma(axis), Cn(axis) and Sn(axis) with the axis x, y, z or a vector a,b,c, all in the same
+coordinate system whose origin lies on every symmetry element. The atoms are given as exchanges (C1<->C3) or cycles
+(C1->C2->C3, the operation moves C1 to the position of C2 and so on); atoms that are not listed stay where they are, i.e.
+are located on the symmetry element. Parameters that are equivalent by symmetry are tied, so it is sufficient to specify one
+of them. Structures with symmetry are always brought into the standard orientation.
 
 Atoms are identified by labels consisting of an element symbol and a number. If a starting geometry is given,
 its XYZ file may use such labels instead of plain element symbols (C1 x y z); otherwise the atoms are numbered per
@@ -75,7 +82,7 @@ def main(argv: Optional[list] = None) -> int:
     )
     parser.add_argument(
         "--no-orient",
-        help="Don't bring the result into the standard orientation (geometric center at the origin, principal axes along x, y, z)",
+        help="Don't bring the result into the standard orientation (geometric center at the origin, principal axes along x, y, z). Not possible with symmetry",
         action="store_true",
     )
     parser.add_argument(

@@ -89,6 +89,27 @@ class TestBuildStructureScript(unittest.TestCase):
         molecule, _ = readLabeledMolecule(output)
         assert_almost_equal(molecule.coordinates()[:, :2], np.zeros((3, 2)), decimal=10)
 
+    def test_symmetry(self):
+        spec = self.write(
+            "nh3.txt",
+            "N1 - H1 1.01\nN1 - H2\nN1 - H3\nH1 - N1 - H2 106.7\n"
+            "@symmetry C3(z): H1->H2->H3\n@symmetry sigma(y): H2<->H3\n",
+        )
+        output = self.path("nh3.xyz")
+
+        self.assertEqual(self.run_script("-i", spec, "-o", output, "--labels")[0], 0)
+        molecule, labels = readLabeledMolecule(output)
+        distances = [
+            np.linalg.norm(molecule.coordinates()[labels.index(a)] - molecule.coordinates()[labels.index("N1")])
+            for a in ("H1", "H2", "H3")
+        ]
+        assert_almost_equal(distances, np.full(3, 1.01), decimal=6)
+
+        # Symmetric structures are always oriented
+        code, err = self.run_script("-i", spec, "-o", output, "--no-orient")
+        self.assertEqual(code, 2)
+        self.assertIn("orient", err)
+
     def test_failure_exit_codes(self):
         # inconsistent parameters
         spec = self.write("bad.txt", "C1 - C2 1.0\nC2 - C3 1.0\nC1 - C3 5.0\n")
