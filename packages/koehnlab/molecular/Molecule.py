@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from .Element import Element
 from .Atom import Atom
+from .Orientation import principalAxes
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -128,16 +129,15 @@ class Molecule:
         inertia tensor are used instead.
         """
         # Bring the center to the origin
+        if self.nAtoms() == 0:
+            return
+
         origin, _ = self._centerAndWeights(center)
         self.translate(-origin)
 
         inertiaTensor = self.inertiaTensor(center)
 
-        # Make use of the fact that the inertia tensor is symmetric
-        eigvals, eigvectors = np.linalg.eigh(inertiaTensor)
-
-        assert len(eigvals) == 3
-        assert len(eigvals) == len(eigvectors)
-
-        # Rotate the molecule to its principle axes
-        self.transform(np.linalg.inv(eigvectors))
+        # Rotate the molecule to its principle axes. These are chosen such that the result is deterministic
+        # and a proper rotation (no mirroring), even if the principal moments are degenerate
+        axes = principalAxes(self.coordinates(), inertiaTensor)
+        self.transform(axes.T)
