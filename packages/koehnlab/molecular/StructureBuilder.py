@@ -1,14 +1,29 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from collections import deque
+from dataclasses import dataclass, field
 
 import math
 
 import numpy as np
-from ase.data import covalent_radii
+from ase.data import covalent_radii, vdw_radii
+from scipy.optimize import least_squares
 
-from .InternalCoordinates import canonicalAngle, canonicalBond, canonicalDihedral
-from .StructureParser import StructureSpec
+from .Atom import Atom
+from .IO import generateLabels
+from .InternalCoordinates import (
+    bondAngles,
+    bondLengths,
+    canonicalAngle,
+    canonicalBond,
+    canonicalDihedral,
+    dihedralAngles,
+    findAngles,
+    findDihedrals,
+    wrapAngle,
+)
+from .Molecule import Molecule
+from .StructureParser import Constraint, StructureSpec, StructureSpecError
 
 # Default angles (in degrees) at an atom depending only on the number of its neighbors. This is deliberately simple:
 # The default geometry is only meant as a rough starting point for the optimization and users who care about the
@@ -190,3 +205,330 @@ def defaultGuess(spec: StructureSpec) -> np.ndarray:
         placed[atom] = True
 
     return coordinates
+
+
+# Two atoms of a given starting geometry are considered to be bonded if their distance is less than this factor times
+# the sum of their covalent radii
+_BOND_DETECTION_FACTOR = 1.25
+
+# Scales of the residuals: A deviation of one scale unit counts as much as the other one
+_LENGTH_SCALE = 1e-3  # Angstrom
+_ANGLE_SCALE = math.radians(0.1)
+
+# Relative weights of the weak restraints that keep all unspecified bonds/angles/torsions of the starting geometry
+# and the weak repulsion between non-bonded atoms, compared to the specified parameters (weight 1)
+_RESTRAINT_WEIGHT = 1e-3
+_CLASH_WEIGHT = 1e-2
+# Non-bonded atoms (separated by at least three bonds) closer than this factor times the sum of van der Waals radii repel
+_CLASH_FACTOR = 0.7
+
+# Maximum deviations of bond lengths (Angstrom) and angles (radians) for a structure to count as converged
+_LENGTH_TOLERANCE = 1e-4
+_ANGLE_TOLERANCE = math.radians(0.01)
+
+
+@dataclass
+class ParameterReport:
+    """Comparison of a specified parameter with the value found in the final structure"""
+
+    labels: Tuple[str, ...]
+    target: float
+    achieved: float
+    # Same units as target/achieved: Angstrom for bonds and degrees for angles and dihedrals
+    deviation: float
+    isLength: bool
+
+    def isSatisfied(self) -> bool:
+        tolerance = _LENGTH_TOLERANCE if self.isLength else math.degrees(_ANGLE_TOLERANCE)
+        return abs(self.deviation) <= tolerance
+
+
+@dataclass
+class BuildResult:
+    """Result of buildStructure"""
+
+    molecule: Molecule
+    labels: List[str]
+    converged: bool
+    attempts: int
+    parameters: List[ParameterReport] = field(default_factory=list)
+
+    def format(self) -> str:
+        """Human-readable table of all specified parameters and how well they are fulfilled"""
+        lines = ["%-28s %12s %12s %12s" % ("parameter", "target", "achieved", "deviation")]
+        for parameter in self.parameters:
+            lines.append(
+                "%-28s %12.6f %12.6f %12.2e%s"
+                % (
+                    " - ".join(parameter.labels),
+                    parameter.target,
+                    parameter.achieved,
+                    parameter.deviation,
+                    "" if parameter.isSatisfied() else "  <-- not satisfied",
+                )
+            )
+        return "\n".join(lines)
+
+
+def resolveSpec(
+    spec: StructureSpec, guess: Molecule, guessLabels: Optional[Sequence[str]] = None
+) -> StructureSpec:
+    """Maps the specification onto the atoms of a starting geometry: The result contains all atoms of the geometry (in
+    its order), the constraints of the specification and as connectivity the union of the bonds of the specification
+    and the bonds detected from the geometry (via covalent radii). If no labels are given for the geometry, per-element
+    counters are used (C1, C2, ..., H1, ...)."""
+    elements = [atom.element for atom in guess.atoms]
+    labels = list(guessLabels) if guessLabels is not None else generateLabels(elements)
+
+    if len(labels) != guess.nAtoms() or len(set(labels)) != len(labels):
+        raise StructureSpecError("The labels of the starting geometry must be unique and one per atom")
+
+    index = {label: i for i, label in enumerate(labels)}
+    mapping: List[int] = []
+    for label, element in zip(spec.labels, spec.elements):
+        if label not in index:
+            raise StructureSpecError("Atom '%s' is not part of the starting geometry" % label)
+        if elements[index[label]] != element:
+            raise StructureSpecError(
+                "Atom '%s' is %s in the specification but %s in the starting geometry"
+                % (label, element.symbol(), elements[index[label]].symbol())
+            )
+        mapping.append(index[label])
+
+    coordinates = guess.coordinates()
+    radii = np.array([covalent_radii[element.atomicNumber()] for element in elements])
+    distances = np.linalg.norm(coordinates[:, None] - coordinates[None, :], axis=2)
+    bonded = distances < _BOND_DETECTION_FACTOR * (radii[:, None] + radii[None, :])
+
+    bonds = {
+        (i, j) for i in range(len(labels)) for j in range(i + 1, len(labels)) if bonded[i, j]
+    }
+    bonds.update(canonicalBond(mapping[i], mapping[j]) for i, j in spec.bonds)
+
+    constraints: List[Constraint] = []
+    for constraint in spec.constraints:
+        indices = tuple(mapping[i] for i in constraint.indices)
+        canonical = {2: canonicalBond, 3: canonicalAngle, 4: canonicalDihedral}[len(indices)](*indices)  # type: ignore[arg-type]
+        constraints.append(Constraint(tuple(canonical), constraint.value, constraint.weight))
+
+    return StructureSpec(labels, elements, sorted(bonds), constraints)
+
+
+class _Problem:
+    """Residual function, which is zero if all specified parameters are fulfilled, together with weak terms that keep
+    everything else close to a reference geometry"""
+
+    def __init__(self, spec: StructureSpec, reference: np.ndarray):
+        self.nAtoms = spec.nAtoms()
+
+        specified = {len(c.indices): [] for c in spec.constraints}  # type: Dict[int, List[Constraint]]
+        for constraint in spec.constraints:
+            specified[len(constraint.indices)].append(constraint)
+
+        def arrays(n: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+            items = specified.get(n, [])
+            return (
+                np.array([c.indices for c in items], dtype=int).reshape(-1, n),
+                np.array([c.value for c in items], dtype=float),
+                np.array([c.weight for c in items], dtype=float),
+            )
+
+        self.bonds, self.bondTargets, self.bondWeights = arrays(2)
+        self.angles, self.angleTargets, self.angleWeights = arrays(3)
+        self.dihedrals, self.dihedralTargets, self.dihedralWeights = arrays(4)
+
+        # Restraints for everything that is not specified
+        def unspecified(candidates: Sequence[Tuple[int, ...]], fixed: np.ndarray) -> np.ndarray:
+            fixedSet = {tuple(row) for row in fixed.tolist()}
+            return np.array(
+                [c for c in candidates if c not in fixedSet], dtype=int
+            ).reshape(-1, len(candidates[0]) if candidates else 1)
+
+        self.restraintBonds = unspecified(spec.bonds, self.bonds).reshape(-1, 2)
+        self.restraintAngles = unspecified(
+            findAngles(spec.bonds, self.nAtoms), self.angles
+        ).reshape(-1, 3)
+
+        # The torsion about a bond is a single degree of freedom, but there are many (redundant) dihedrals around it. So only
+        # one dihedral per bond is restrained and none if a dihedral about this bond is specified anyway
+        specifiedBonds = {frozenset(row[1:3]) for row in self.dihedrals.tolist()}
+        torsions: Dict[frozenset, Tuple[int, ...]] = {}
+        for dihedral in sorted(findDihedrals(spec.bonds, self.nAtoms)):
+            central = frozenset(dihedral[1:3])
+            if central not in specifiedBonds and central not in torsions:
+                torsions[central] = dihedral
+        self.restraintDihedrals = np.array(list(torsions.values()), dtype=int).reshape(-1, 4)
+
+        self.restraintBondTargets = bondLengths(reference, self.restraintBonds)
+        self.restraintAngleTargets = bondAngles(reference, self.restraintAngles)
+        self.restraintDihedralTargets = dihedralAngles(reference, self.restraintDihedrals)
+
+        # Pairs of atoms that are at least three bonds apart can clash
+        graphDistance = np.full((self.nAtoms, self.nAtoms), np.inf)
+        np.fill_diagonal(graphDistance, 0)
+        for i, j in spec.bonds:
+            graphDistance[i, j] = graphDistance[j, i] = 1
+        for k in range(self.nAtoms):
+            graphDistance = np.minimum(
+                graphDistance, graphDistance[:, k : k + 1] + graphDistance[k : k + 1, :]
+            )
+        vdw = np.array([vdw_radii[e.atomicNumber()] for e in spec.elements])
+        vdw = np.where(np.isfinite(vdw), vdw, 2.0)
+        i, j = np.triu_indices(self.nAtoms, k=1)
+        keep = graphDistance[i, j] >= 3
+        self.clashPairs = np.column_stack((i[keep], j[keep])).reshape(-1, 2)
+        self.clashDistances = _CLASH_FACTOR * (vdw[i[keep]] + vdw[j[keep]])
+
+    def residuals(
+        self, x: np.ndarray, restraints: bool = True
+    ) -> np.ndarray:
+        coordinates = x.reshape(-1, 3)
+
+        parts = [
+            self.bondWeights
+            * (bondLengths(coordinates, self.bonds) - self.bondTargets)
+            / _LENGTH_SCALE,
+            self.angleWeights
+            * (bondAngles(coordinates, self.angles) - self.angleTargets)
+            / _ANGLE_SCALE,
+            self.dihedralWeights
+            * wrapAngle(dihedralAngles(coordinates, self.dihedrals) - self.dihedralTargets)
+            / _ANGLE_SCALE,
+        ]
+
+        if restraints:
+            parts += [
+                _RESTRAINT_WEIGHT
+                * (bondLengths(coordinates, self.restraintBonds) - self.restraintBondTargets)
+                / _LENGTH_SCALE,
+                _RESTRAINT_WEIGHT
+                * (bondAngles(coordinates, self.restraintAngles) - self.restraintAngleTargets)
+                / _ANGLE_SCALE,
+                _RESTRAINT_WEIGHT
+                * wrapAngle(
+                    dihedralAngles(coordinates, self.restraintDihedrals)
+                    - self.restraintDihedralTargets
+                )
+                / _ANGLE_SCALE,
+                _CLASH_WEIGHT
+                * np.maximum(
+                    0.0, self.clashDistances - bondLengths(coordinates, self.clashPairs)
+                )
+                / _LENGTH_SCALE,
+            ]
+
+        return np.concatenate(parts)
+
+
+def _report(spec: StructureSpec, coordinates: np.ndarray) -> List[ParameterReport]:
+    reports: List[ParameterReport] = []
+    for constraint in spec.constraints:
+        indices = constraint.indices
+        labels = tuple(spec.labels[i] for i in indices)
+        if len(indices) == 2:
+            achieved = float(bondLengths(coordinates, [indices])[0])  # type: ignore[list-item]
+            deviation = achieved - constraint.value
+            reports.append(ParameterReport(labels, constraint.value, achieved, deviation, True))
+            continue
+
+        if len(indices) == 3:
+            achieved = float(bondAngles(coordinates, [indices])[0])  # type: ignore[list-item]
+            deviation = achieved - constraint.value
+        else:
+            achieved = float(dihedralAngles(coordinates, [indices])[0])  # type: ignore[list-item]
+            deviation = float(wrapAngle(achieved - constraint.value))
+
+        reports.append(
+            ParameterReport(
+                labels,
+                math.degrees(constraint.value),
+                math.degrees(achieved),
+                math.degrees(deviation),
+                False,
+            )
+        )
+
+    return reports
+
+
+def buildStructure(
+    spec: StructureSpec,
+    guess: Optional[Molecule] = None,
+    guessLabels: Optional[Sequence[str]] = None,
+    orient: bool = True,
+    maxAttempts: int = 5,
+    seed: int = 0,
+) -> BuildResult:
+    """Computes Cartesian coordinates that fulfill the structure parameters of the given specification.
+
+    All parameters are treated as equations for the coordinates, which are solved by a least-squares optimization starting
+    from the given geometry. Without a geometry, a rough one is generated from the connectivity (see defaultGuess).
+    The solution is not unique when parameters are missing; the one closest to the starting geometry is returned as all
+    other bonds, angles and dihedrals are weakly restrained to their starting values.
+
+    If the parameters are not fulfilled after an attempt, the starting coordinates are randomly displaced (reproducibly,
+    depending on the seed) and the optimization is repeated, up to maxAttempts times. The best result is returned and
+    BuildResult.converged tells whether all parameters are fulfilled.
+
+    With orient=True, the result is translated and rotated into the standard orientation (the solution is otherwise
+    arbitrary with respect to translation and rotation).
+    """
+    if guess is not None:
+        spec = resolveSpec(spec, guess, guessLabels)
+        start = guess.coordinates()
+    else:
+        start = defaultGuess(spec)
+
+    problem = _Problem(spec, start)
+
+    rng = np.random.default_rng(seed)
+    best: Optional[np.ndarray] = None
+    bestCost = math.inf
+    bestConverged = False
+    attempts = 0
+
+    for attempt in range(max(1, maxAttempts)):
+        attempts = attempt + 1
+        x0 = start.copy()
+        if attempt > 0:
+            x0 += rng.normal(scale=0.1 * attempt, size=x0.shape)
+
+        # First solve with the weak terms and then once more without them to remove the compromises they cause
+        solution = least_squares(
+            problem.residuals, x0.ravel(), method="trf", max_nfev=1000, xtol=1e-14, ftol=1e-14, gtol=1e-14
+        )
+        solution = least_squares(
+            lambda x: problem.residuals(x, restraints=False),
+            solution.x,
+            method="trf",
+            max_nfev=1000,
+            xtol=1e-14,
+            ftol=1e-14,
+            gtol=1e-14,
+        )
+
+        cost = float(np.sum(problem.residuals(solution.x, restraints=False) ** 2))
+        coordinates = solution.x.reshape(-1, 3)
+        converged = all(r.isSatisfied() for r in _report(spec, coordinates))
+
+        if best is None or (converged, -cost) > (bestConverged, -bestCost):
+            best, bestCost, bestConverged = solution.x, cost, converged
+
+        if converged:
+            break
+
+    assert best is not None
+
+    molecule = Molecule(
+        [Atom(element, coordinate) for element, coordinate in zip(spec.elements, best.reshape(-1, 3))]
+    )
+    if orient:
+        molecule.bringToStandardOrientation()
+
+    return BuildResult(
+        molecule=molecule,
+        labels=list(spec.labels),
+        converged=bestConverged,
+        attempts=attempts,
+        parameters=_report(spec, molecule.coordinates()),
+    )
