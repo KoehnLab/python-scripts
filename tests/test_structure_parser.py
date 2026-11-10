@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import math
+import numpy as np
 import os
 import tempfile
 import unittest
 
 from koehnlab.molecular import Element
 from koehnlab.molecular.StructureParser import (
+    parseSymmetryOperation,
     Constraint,
     StructureSpecError,
     parseStructureSpec,
@@ -76,6 +78,65 @@ class TestStructureParser(unittest.TestCase):
             with self.subTest(text):
                 with self.assertRaises(StructureSpecError):
                     parseStructureSpecString(text)
+
+    def test_symmetry_operations(self):
+        assert_almost_equal(parseSymmetryOperation("i"), -np.eye(3))
+        assert_almost_equal(parseSymmetryOperation("C2(z)"), np.diag([-1, -1, 1]))
+        assert_almost_equal(parseSymmetryOperation("sigma(y)"), np.diag([1, -1, 1]))
+        assert_almost_equal(parseSymmetryOperation("sigma(0,0,2)"), np.diag([1, 1, -1]))
+        assert_almost_equal(parseSymmetryOperation("S2(z)"), -np.eye(3))
+        assert_almost_equal(parseSymmetryOperation("S4(z)") @ [1, 0, 0], [0, 1, 0])
+        assert_almost_equal(parseSymmetryOperation("S4(z)") @ [0, 0, 1], [0, 0, -1])
+
+        c3 = parseSymmetryOperation("C3(z)")
+        assert_almost_equal(c3 @ [1, 0, 0], [math.cos(2 * math.pi / 3), math.sin(2 * math.pi / 3), 0])
+        assert_almost_equal(np.linalg.matrix_power(c3, 3), np.eye(3))
+        # C2 about the diagonal exchanges x and y
+        assert_almost_equal(parseSymmetryOperation("C2(1,1,0)") @ [1, 0, 0], [0, 1, 0])
+
+        for invalid in ("", "C2", "C2(w)", "C0(z)", "sigma(0,0,0)", "sigma(1,2)", "T(z)", "C2(z"):
+            with self.subTest(invalid):
+                with self.assertRaises(ValueError):
+                    parseSymmetryOperation(invalid)
+
+    def test_symmetry_directive(self):
+        spec = parseStructureSpecString(
+            """
+            C1 - C2 1.4
+            @symmetry C2(z): C1<->C2, H1<->H2   # H atoms are introduced here
+            @symmetry sigma(x): C1->C2 , H3
+            @symmetry i:
+            """
+        )
+
+        self.assertEqual(spec.labels, ["C1", "C2", "H1", "H2", "H3"])
+        self.assertEqual([op.name for op in spec.symmetry], ["C2(z)", "sigma(x)", "i"])
+        self.assertEqual(spec.symmetry[0].cycles, ((0, 1), (2, 3)))
+        self.assertEqual(spec.symmetry[1].cycles, ((0, 1),))
+        self.assertEqual(spec.symmetry[2].cycles, ())
+        assert_almost_equal(spec.symmetry[0].matrix, np.diag([-1, -1, 1]))
+
+        # cycles of any length
+        spec = parseStructureSpecString("@symmetry C3(z): C1->C2->C3, H1->H2->H3")
+        self.assertEqual(spec.symmetry[0].cycles, ((0, 1, 2), (3, 4, 5)))
+
+    def test_symmetry_errors(self):
+        invalid = {
+            "unknown operation": "@symmetry flip(z): C1<->C2",
+            "missing colon": "@symmetry C2(z) C1<->C2",
+            "repeated atom": "@symmetry C2(z): C1<->C2, C1<->C3",
+            "repeated in cycle": "@symmetry C3(z): C1->C2->C1",
+            "bad exchange": "@symmetry C2(z): C1<->C2<->C3",
+            "bad label": "@symmetry C2(z): C1<->foo",
+            "bad element": "@symmetry C2(z): C1<->Xx2",
+        }
+        for name, text in invalid.items():
+            with self.subTest(name):
+                with self.assertRaises(StructureSpecError):
+                    parseStructureSpecString(text)
+
+        with self.assertRaisesRegex(StructureSpecError, r":2:"):
+            parseStructureSpecString("C1 - C2 1.0\n@symmetry C2(q): C1<->C2")
 
     def test_file(self):
         with tempfile.TemporaryDirectory() as tmp:

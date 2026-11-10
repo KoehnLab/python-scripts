@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 import math
 import re
 
+import numpy as np
+
 from .Element import Element
 from .InternalCoordinates import (
     canonicalAngle,
@@ -31,6 +33,17 @@ class Constraint:
         return {2: "bond", 3: "angle", 4: "dihedral"}[len(self.indices)]
 
 
+@dataclass(eq=False)
+class SymmetryOperation:
+    """A symmetry operation of the molecule: A 3x3 orthogonal matrix, acting on the position vectors, together with the
+    permutation of the atoms it causes. The operation moves the position of every atom in a cycle to the position of the next
+    atom in the cycle (the last one to the first). Atoms that don't appear in any cycle stay where they are."""
+
+    name: str
+    matrix: np.ndarray
+    cycles: Tuple[Tuple[int, ...], ...]
+
+
 @dataclass
 class StructureSpec:
     """A set of structure parameters for a molecule, whose atoms are identified by unique labels (e.g. "C1")"""
@@ -42,6 +55,9 @@ class StructureSpec:
     constraints: List[Constraint] = field(default_factory=list)
     # Dimensionality of the molecule: "general" (3D), "planar" (all atoms in one plane) or "linear" (all atoms on one line)
     geometry: str = "general"
+    # Generators of the symmetry group of the molecule (all operations are defined in the same frame, whose origin is a point
+    # that is invariant under all operations)
+    symmetry: List[SymmetryOperation] = field(default_factory=list)
 
     def nAtoms(self) -> int:
         return len(self.labels)
@@ -56,12 +72,71 @@ class StructureSpec:
 _LABEL = r"[A-Za-z]+\d+"
 _LABEL_CHAIN = re.compile(r"^\s*(%s(?:\s*-\s*%s)*)(.*)$" % (_LABEL, _LABEL))
 _LABEL_SPLIT = re.compile(r"([A-Za-z]+)(\d+)")
+_SYMMETRY = re.compile(r"^@symmetry\s+([^:]+?)\s*:(.*)$")
 _DIRECTIVE = re.compile(r"^@(\w+)$")
 GEOMETRIES = {"planar": "planar", "linear": "linear"}
 _WEIGHT = re.compile(r"(?<!\S)w\s*=\s*(\S+)")
 
 # Parameters that differ by less than this are considered to be identical
 _DUPLICATE_TOLERANCE = 1e-8
+
+
+def _parseAxis(text: str) -> np.ndarray:
+    """Parses an axis given as x, y, z or as vector a,b,c"""
+    text = text.strip()
+    if text in ("x", "y", "z"):
+        return np.eye(3)["xyz".index(text)]
+
+    try:
+        axis = np.array([float(component) for component in text.split(",")])
+    except ValueError:
+        axis = np.zeros(0)
+    if axis.shape != (3,) or not np.all(np.isfinite(axis)) or np.linalg.norm(axis) < 1e-8:
+        raise ValueError("Invalid axis '%s' (expected x, y, z or three comma-separated numbers)" % text)
+
+    return axis / np.linalg.norm(axis)
+
+
+def _rotation(axis: np.ndarray, angle: float) -> np.ndarray:
+    cross = np.array(
+        [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
+    )
+    return (
+        math.cos(angle) * np.eye(3)
+        + math.sin(angle) * cross
+        + (1 - math.cos(angle)) * np.outer(axis, axis)
+    )
+
+
+def _reflection(normal: np.ndarray) -> np.ndarray:
+    return np.eye(3) - 2 * np.outer(normal, normal)
+
+
+def parseSymmetryOperation(text: str) -> np.ndarray:
+    """Returns the matrix of a symmetry operation given by its name: i (inversion), sigma(axis) (mirror plane perpendicular
+    to the axis), Cn(axis) (rotation by 360/n degrees about the axis, counterclockwise when looking against the axis) and
+    Sn(axis) (rotation by 360/n degrees followed by a reflection at the plane perpendicular to the axis). The axis is x, y, z or
+    a vector a,b,c."""
+    text = text.strip()
+    if text == "i":
+        return -np.eye(3)
+
+    match = re.fullmatch(r"(sigma|[CS]\d+)\((.*)\)", text)
+    if match is None:
+        raise ValueError(
+            "Unknown symmetry operation '%s' (expected i, sigma(axis), Cn(axis) or Sn(axis))" % text
+        )
+
+    kind, axis = match.group(1), _parseAxis(match.group(2))
+    if kind == "sigma":
+        return _reflection(axis)
+
+    order = int(kind[1:])
+    if order < 1:
+        raise ValueError("The order of '%s' must be positive" % text)
+    rotation = _rotation(axis, 2 * math.pi / order)
+
+    return rotation if kind[0] == "C" else _reflection(axis) @ rotation
 
 
 def parseStructureSpec(path: str) -> StructureSpec:
@@ -83,6 +158,12 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     The atoms are ordered by their first appearance.
 
     The directives '@planar' and '@linear' state that all atoms of the molecule are located in one plane or on one line.
+
+    The line '@symmetry <operation>: <atoms>' declares a symmetry operation of the molecule, e.g.
+    '@symmetry C2(z): C1<->C3, C2<->C4' (see parseSymmetryOperation for the operations). The atoms are given by exchanges
+    ('C1<->C3') or cycles ('C1->C2->C3': the operation moves C1 to the position of C2, C2 to the position of C3 and C3 to the
+    position of C1). Atoms that are not listed are not moved by the operation, i.e. they are located on the symmetry element.
+    All operations refer to the same coordinate frame and its origin must be on every symmetry element.
     """
     spec = StructureSpec()
     labelIndex: Dict[str, int] = {}
@@ -111,6 +192,43 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     for lineNumber, rawLine in enumerate(text.splitlines(), start=1):
         line = rawLine.split("#", 1)[0].strip()
         if not line:
+            continue
+
+        symmetry = _SYMMETRY.match(line)
+        if symmetry is not None:
+            try:
+                matrix = parseSymmetryOperation(symmetry.group(1))
+            except ValueError as error:
+                raise fail(lineNumber, str(error))
+
+            cycles: List[Tuple[int, ...]] = []
+            used: Dict[str, None] = {}
+            for token in symmetry.group(2).split(","):
+                token = token.strip()
+                if not token:
+                    continue
+
+                if "<->" in token:
+                    labels = [label.strip() for label in token.split("<->")]
+                    if len(labels) != 2:
+                        raise fail(lineNumber, "'<->' exchanges exactly two atoms: '%s'" % token)
+                else:
+                    labels = [label.strip() for label in token.split("->")]
+
+                for label in labels:
+                    if re.fullmatch(_LABEL, label) is None:
+                        raise fail(lineNumber, "Expected an atom label but found '%s'" % label)
+                    if label in used:
+                        raise fail(lineNumber, "Atom %s appears more than once in the symmetry operation" % label)
+                    used[label] = None
+
+                indices = tuple(atomIndex(label, lineNumber) for label in labels)
+                if len(indices) > 1:
+                    cycles.append(indices)
+
+            spec.symmetry.append(
+                SymmetryOperation(symmetry.group(1).strip(), matrix, tuple(cycles))
+            )
             continue
 
         directive = _DIRECTIVE.match(line)
