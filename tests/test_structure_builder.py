@@ -5,7 +5,7 @@ import os
 import unittest
 
 from koehnlab.molecular.StructureParser import parseStructureSpecString
-from koehnlab.molecular import Atom, Molecule, readLabeledMolecule
+from koehnlab.molecular import Atom, Element, Molecule, readLabeledMolecule
 from koehnlab.molecular.StructureParser import StructureSpecError
 from koehnlab.molecular.StructureBuilder import (
     _Problem,
@@ -435,6 +435,155 @@ class TestFlatMolecules(unittest.TestCase):
     def test_unknown_geometry(self):
         with self.assertRaises(ValueError):
             buildStructure(_parse("C1 - C2 1.4"), geometry="spherical")
+
+
+WATER_C2V = """
+O1 - H1 0.96
+O1 - H2
+H1 - O1 - H2 104.5
+@symmetry C2(z): H1<->H2
+@symmetry sigma(y):
+"""
+
+AMMONIA_C3V = """
+N1 - H1 1.01
+N1 - H2
+N1 - H3
+H1 - N1 - H2 106.7
+@symmetry C3(z): H1->H2->H3
+@symmetry sigma(y): H2<->H3
+"""
+
+# Planar trans-butadiene (C2h), only half of the parameters are given
+BUTADIENE_C2H = """
+@planar
+C1 - C2 1.34
+C2 - C3 1.46
+C3 - C4
+C1 - C2 - C3 123.5
+C1 - C2 - C3 - C4 180
+C1 - H1
+C1 - H2
+C2 - H3
+C3 - H4
+C4 - H5
+C4 - H6
+@symmetry C2(z): C1<->C4, C2<->C3, H1<->H5, H2<->H6, H3<->H4
+"""
+
+
+class TestSymmetry(unittest.TestCase):
+
+    @staticmethod
+    def positions(result):
+        return {label: result.molecule.coordinates()[i] for i, label in enumerate(result.labels)}
+
+    def test_water(self):
+        result = buildStructure(_parse(WATER_C2V))
+        xyz = self.positions(result)
+
+        self.assertTrue(result.converged)
+        # The parameter given for one bond applies to the equivalent one as well
+        for label in ("H1", "H2"):
+            self.assertAlmostEqual(float(np.linalg.norm(xyz[label] - xyz["O1"])), 0.96, places=6)
+        # C2v: the hydrogens are equivalent, so the geometric center lies on the symmetry axes
+        assert_almost_equal(np.linalg.norm(xyz["H1"] - xyz["O1"]), np.linalg.norm(xyz["H2"] - xyz["O1"]))
+
+    def test_ammonia(self):
+        result = buildStructure(_parse(AMMONIA_C3V))
+        xyz = self.positions(result)
+
+        self.assertTrue(result.converged)
+        for h in ("H1", "H2", "H3"):
+            self.assertAlmostEqual(float(np.linalg.norm(xyz[h] - xyz["N1"])), 1.01, places=6)
+
+        # The angle was only specified for one pair of hydrogens
+        for a, b in (("H1", "H2"), ("H2", "H3"), ("H1", "H3")):
+            u, v = xyz[a] - xyz["N1"], xyz[b] - xyz["N1"]
+            angle = math.degrees(math.acos(u @ v / np.linalg.norm(u) / np.linalg.norm(v)))
+            self.assertAlmostEqual(angle, 106.7, places=4)
+
+        # N is on the unique axis, which is the z axis in the standard orientation of a symmetric top
+        assert_almost_equal(xyz["N1"][:2], np.zeros(2), decimal=8)
+
+    def test_butadiene_ties_parameters(self):
+        result = buildStructure(_parse(BUTADIENE_C2H))
+        xyz = self.positions(result)
+        distance = lambda a, b: float(np.linalg.norm(xyz[a] - xyz[b]))
+
+        self.assertTrue(result.converged, result.format())
+        self.assertAlmostEqual(distance("C3", "C4"), 1.34, places=6)
+        self.assertAlmostEqual(distance("C1", "C2"), 1.34, places=6)
+        assert_almost_equal(
+            bondAngles(result.molecule.coordinates(), [(result.labels.index("C2"), result.labels.index("C3"), result.labels.index("C4"))]),
+            [math.radians(123.5)],
+        )
+
+        # Inversion centre (C2 axis perpendicular to the molecular plane): partners are mirrored at the centre
+        center = result.molecule.coordinates().mean(axis=0)
+        for a, b in (("C1", "C4"), ("C2", "C3"), ("H1", "H5"), ("H2", "H6"), ("H3", "H4")):
+            assert_almost_equal(xyz[a] + xyz[b], 2 * center, decimal=8)
+        assert_almost_equal(result.molecule.coordinates()[:, 2], np.zeros(10), decimal=10)
+
+    def test_conflicting_parameters_are_rejected(self):
+        with self.assertRaisesRegex(StructureSpecError, "equivalent by symmetry"):
+            buildStructure(_parse(BUTADIENE_C2H + "\nC3 - C4 1.35"))
+
+    def test_dihedral_signs_under_improper_operations(self):
+        chain = "C1 - C2 1.5\nC2 - C3 1.5\nC3 - C4 1.5\nC1 - C2 - C3 110\n@symmetry i: C1<->C4, C2<->C3\n"
+
+        # Inversion turns a dihedral into its negative, so it can only be 0 or 180 degrees
+        with self.assertRaisesRegex(StructureSpecError, "equivalent by symmetry"):
+            buildStructure(_parse(chain + "C1 - C2 - C3 - C4 60"))
+
+        result = buildStructure(_parse(chain + "C1 - C2 - C3 - C4 180"))
+        self.assertTrue(result.converged)
+
+        # A rotation keeps the sign
+        rotation = chain.replace("@symmetry i:", "@symmetry C2(z):")
+        self.assertTrue(buildStructure(_parse(rotation + "C1 - C2 - C3 - C4 60")).converged)
+
+    def test_invalid_operations(self):
+        invalid = {
+            "bonds not preserved": "C1 - C2 1.5\nC1 - H1 1.1\n@symmetry C2(z): C1<->C2",
+            "elements exchanged": "C1 - H1 1.1\n@symmetry C2(z): C1<->H1",
+            "atoms exchanged without moving": "C1 - C2 1.5\n@symmetry C1(z): C1<->C2",
+            "infinite group": "C1 - C2 1.4\n@symmetry C2(1,0,0):\n@symmetry C2(0.5403023,0.841471,0):",
+        }
+        for name, text in invalid.items():
+            with self.subTest(name):
+                with self.assertRaises(StructureSpecError):
+                    buildStructure(_parse(text))
+
+    def test_orientation_is_mandatory(self):
+        with self.assertRaises(ValueError):
+            buildStructure(_parse(WATER_C2V), orient=False)
+
+    def test_starting_geometry(self):
+        guess = Molecule(
+            [
+                Atom(Element.O, [0.01, 0.0, 0.0]),
+                Atom(Element.H, [0.77, 0.0, -0.52]),
+                Atom(Element.H, [-0.74, 0.0, -0.50]),
+            ]
+        )
+
+        result = buildStructure(_parse(WATER_C2V), guess, ["O1", "H1", "H2"])
+        xyz = self.positions(result)
+
+        self.assertTrue(result.converged)
+        self.assertAlmostEqual(float(np.linalg.norm(xyz["H2"] - xyz["O1"])), 0.96, places=6)
+
+        # A geometry that is far from the symmetry triggers a warning
+        asymmetric = Molecule(
+            [
+                Atom(Element.O, [0.0, 0.0, 0.0]),
+                Atom(Element.H, [0.9, 0.0, 0.0]),
+                Atom(Element.H, [0.0, 0.0, 0.5]),
+            ]
+        )
+        with self.assertWarns(UserWarning):
+            self.assertTrue(buildStructure(_parse(WATER_C2V), asymmetric, ["O1", "H1", "H2"]).converged)
 
 
 if __name__ == "__main__":
