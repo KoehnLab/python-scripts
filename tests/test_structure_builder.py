@@ -586,5 +586,104 @@ class TestSymmetry(unittest.TestCase):
             self.assertTrue(buildStructure(_parse(WATER_C2V), asymmetric, ["O1", "H1", "H2"]).converged)
 
 
+WATER_PARTIAL = """
+O1 - H1 0.96
+O1 - H2
+H1 - O1 - H2 104.5
+@group C2v
+"""
+
+# Staggered ethane in the canonical frame of D3d: C3 axis along z and C2 axes along x. Atoms: C1, C2, H1-H3 (on C1), H4-H6 (on C2)
+def _ethane() -> Molecule:
+    def hydrogen(angle, z):
+        return Atom(Element.H, [1.02 * math.cos(math.radians(angle)), 1.02 * math.sin(math.radians(angle)), z])
+
+    return Molecule(
+        [Atom(Element.C, [0, 0, 0.765]), Atom(Element.C, [0, 0, -0.765])]
+        + [hydrogen(a, 1.16) for a in (30, 150, 270)]
+        + [hydrogen(a, -1.16) for a in (90, 210, 330)]
+    )
+
+
+class TestSymmetryInference(unittest.TestCase):
+
+    def test_group_with_anchors(self):
+        # sigma(y) maps the molecule in the xz plane onto itself: the hydrogens stay where they are
+        text = WATER_PARTIAL + "@symmetry C2(z): H1<->H2\n@symmetry sigma(y): H1, ...\n"
+        result = buildStructure(_parse(text))
+
+        self.assertTrue(result.converged)
+        coords = result.molecule.coordinates()
+        o, h1, h2 = (coords[result.labels.index(label)] for label in ("O1", "H1", "H2"))
+        self.assertAlmostEqual(float(np.linalg.norm(h2 - o)), 0.96, places=6)
+
+    def test_ambiguity_is_reported(self):
+        # Without further information, the mirror plane could exchange the hydrogens or leave them in place
+        with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
+            buildStructure(_parse(WATER_PARTIAL + "@symmetry C2(z): H1<->H2\n"))
+
+        with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
+            buildStructure(_parse(WATER_PARTIAL))
+
+    def test_group_with_starting_geometry(self):
+        guess = Molecule(
+            [
+                Atom(Element.O, [0.0, 0.0, 0.0]),
+                Atom(Element.H, [0.76, 0.0, -0.52]),
+                Atom(Element.H, [-0.76, 0.0, -0.52]),
+            ]
+        )
+
+        result = buildStructure(_parse(WATER_PARTIAL), guess, ["O1", "H1", "H2"])
+
+        self.assertTrue(result.converged)
+        coords = result.molecule.coordinates()
+        self.assertAlmostEqual(float(np.linalg.norm(coords[2] - coords[0])), 0.96, places=6)
+
+    def test_partial_list_with_ellipsis(self):
+        # The cycle H1->H2 is completed to H1->H2->H3, a swap would not be compatible with a rotation by 120 degrees
+        text = AMMONIA_C3V.replace("H1->H2->H3", "H1->H2, ...")
+        result = buildStructure(_parse(text))
+        self.assertTrue(result.converged)
+
+        # An exchange of two hydrogens is compatible with a mirror plane but a fixed H1 does not tell what happens to the others
+        ambiguous = AMMONIA_C3V.replace("sigma(y): H2<->H3", "sigma(y): H1, ...")
+        with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
+            buildStructure(_parse(ambiguous))
+
+    def test_inconsistent_anchors(self):
+        with self.assertRaisesRegex(StructureSpecError, "different element"):
+            buildStructure(_parse(AMMONIA_C3V.replace("H1->H2->H3", "H1->N1, ...")))
+
+        # A rotation by 120 degrees cannot exchange two atoms and leave the rest alone
+        with self.assertRaisesRegex(StructureSpecError, "No atom mapping"):
+            buildStructure(_parse(AMMONIA_C3V.replace("H1->H2->H3", "H1<->H2, ...")))
+
+    def test_ethane_d3d(self):
+        guess = _ethane()
+        spec = _parse("C1 - C2 1.53\nC1 - H1 1.09\nH1 - C1 - C2 111\n@group D3d")
+
+        result = buildStructure(spec, guess)
+        self.assertTrue(result.converged, result.format())
+
+        coords = result.molecule.coordinates()
+        index = {label: i for i, label in enumerate(result.labels)}
+        distance = lambda a, b: float(np.linalg.norm(coords[index[a]] - coords[index[b]]))
+
+        # Everything follows from the three given parameters
+        for carbon, hydrogens in (("C1", ("H1", "H2", "H3")), ("C2", ("H4", "H5", "H6"))):
+            for h in hydrogens:
+                self.assertAlmostEqual(distance(carbon, h), 1.09, places=6)
+        self.assertAlmostEqual(distance("H1", "H2"), distance("H2", "H3"), places=6)
+        self.assertAlmostEqual(distance("H1", "H2"), distance("H5", "H6"), places=6)
+        # staggered: all H-C-C-H dihedrals are 60, 180 or -60 degrees
+        for dihedral in dihedralAngles(coords, [(index["H1"], 0, 1, index["H4"]), (index["H1"], 0, 1, index["H5"])]):
+            self.assertAlmostEqual(_distanceToMultiple(math.degrees(float(dihedral)), 60), 0, places=4)
+
+        # Without a geometry the mapping of the hydrogens is not determined by the graph
+        with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
+            buildStructure(_parse("C1 - C2 1.53\nC1 - H1 1.09\nC1 - H2\nC1 - H3\nC2 - H4\nC2 - H5\nC2 - H6\n@group D3d"))
+
+
 if __name__ == "__main__":
     unittest.main()

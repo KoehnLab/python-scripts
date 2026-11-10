@@ -47,6 +47,9 @@ class SymmetryOperation:
     fixed: Tuple[int, ...] = ()
     # Whether only some of the atoms are given and the remaining ones have to be inferred from the bonds
     partial: bool = False
+    # The cycles that were given as chains ('A->B->C'). Unless the operation is partial, they are closed (C moves to A),
+    # otherwise they only state where each atom of the chain moves to
+    chains: Tuple[Tuple[int, ...], ...] = ()
 
 
 @dataclass
@@ -159,7 +162,8 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     All operations refer to the same coordinate frame and its origin must be on every symmetry element.
 
     The atoms of an operation can be incomplete if the list ends with '...', e.g. '@symmetry C2(z): C1<->C4, ...'. The
-    remaining atoms are then inferred from the bonds. A single label stands for an atom that stays where it is
+    remaining atoms are then inferred from the bonds (a chain like 'C1->C2' then only states that C1 moves to C2, not that C2
+    moves to C1). A single label stands for an atom that stays where it is
     ('@symmetry sigma(y): H1, ...').
 
     The line '@group C2v' adds the generators of the point group (in a canonical frame, see pointGroupGenerators) as operations
@@ -203,6 +207,7 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
                 raise fail(lineNumber, str(error))
 
             cycles: List[Tuple[int, ...]] = []
+            chains: List[Tuple[int, ...]] = []
             fixed: List[int] = []
             partial = False
             used: Dict[str, None] = {}
@@ -231,12 +236,19 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
                 indices = tuple(atomIndex(label, lineNumber) for label in labels)
                 if len(indices) > 1:
                     cycles.append(indices)
+                    if "<->" not in token:
+                        chains.append(indices)
                 else:
                     fixed.append(indices[0])
 
             spec.symmetry.append(
                 SymmetryOperation(
-                    symmetry.group(1).strip(), matrix, tuple(cycles), tuple(fixed), partial
+                    symmetry.group(1).strip(),
+                    matrix,
+                    tuple(cycles),
+                    tuple(fixed),
+                    partial,
+                    tuple(chains),
                 )
             )
             continue

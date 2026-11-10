@@ -24,6 +24,7 @@ from .InternalCoordinates import (
     wrapAngle,
 )
 from .Molecule import Molecule
+from .SymmetryInference import completeSymmetry
 from .StructureParser import (
     Constraint,
     StructureSpec,
@@ -341,6 +342,9 @@ def resolveSpec(
             operation.name,
             operation.matrix,
             tuple(tuple(mapping[i] for i in cycle) for cycle in operation.cycles),
+            tuple(mapping[i] for i in operation.fixed),
+            operation.partial,
+            tuple(tuple(mapping[i] for i in chain) for chain in operation.chains),
         )
         for operation in spec.symmetry
     ]
@@ -880,6 +884,9 @@ def buildStructure(
 
     if guess is not None:
         spec = resolveSpec(spec, guess, guessLabels)
+
+    # Operations with missing atoms are completed with the help of the bonds (and the starting geometry)
+    spec = completeSymmetry(spec, guess.coordinates() if guess is not None else None)
 
     nAtoms = spec.nAtoms()
     generators = _generators(spec, geometry) if spec.symmetry else []

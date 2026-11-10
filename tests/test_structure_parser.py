@@ -150,6 +150,11 @@ class TestStructureParser(unittest.TestCase):
         self.assertFalse(second.partial)
         self.assertEqual(second.fixed, ())
 
+        # Exchanges are closed cycles, chains are only closed if the operation is complete
+        spec = parseStructureSpecString("@symmetry C3(z): C1->C2, C3<->C4, ...")
+        self.assertEqual(spec.symmetry[0].cycles, ((0, 1), (2, 3)))
+        self.assertEqual(spec.symmetry[0].chains, ((0, 1),))
+
     def test_groups(self):
         spec = parseStructureSpecString(
             "C1 - H1 1.0\n@group C2v\n@symmetry C2(z): H1<->H2\nC1 - H2\n"
