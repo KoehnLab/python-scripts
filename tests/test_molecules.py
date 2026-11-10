@@ -25,9 +25,7 @@ class TestMolecules(unittest.TestCase):
 
         mol_A.bringToStandardOrientation(center="mass")
 
-        # Note: biphenyl_aligned.xyz is not used here as it is the mirror image of the correct orientation
-        # (it was generated with an improper rotation). It only serves as input for the Eckart test.
-        mol_B = readMolecule(os.path.join(data_dir, "biphenyl_aligned_mass.xyz"))
+        mol_B = readMolecule(os.path.join(data_dir, "biphenyl_aligned.xyz"))
 
         assert_almost_equal(mol_A.coordinates(),mol_B.coordinates())
 
