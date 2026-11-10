@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 from copy import deepcopy
 
@@ -81,43 +81,57 @@ class Molecule:
 
         return center
 
-    def inertiaTensor(self) -> np.ndarray:
-        """Computes the inertia tensor for this molecule"""
-        tensor = np.zeros(shape=(3, 3))
+    def geometricCenter(self) -> np.ndarray:
+        """Computes the geometric center (average of all atomic positions) of this molecule"""
+        return np.mean(self.coordinates(), axis=0)
 
-        center = self.centerOfMass()
+    def _centerAndWeights(self, center: str) -> Tuple[np.ndarray, np.ndarray]:
+        """Returns the origin and the per-atom weights belonging to the given centering mode:
+        "geometric": geometric center, all atoms weighted equally
+        "mass": center of mass, atoms weighted by their mass
+        """
+        if center == "geometric":
+            return self.geometricCenter(), np.ones(self.nAtoms())
+        if center == "mass":
+            return self.centerOfMass(), self.masses()
 
-        # T_{ij} = sum_k m_k * (|r_k|^2 * delta_{ij} - r_k[i] * r_k[j])
-        # where m_k is the k-th element's mass, r_k its position and r_k[i] is the i-th coordinate of that position
+        raise ValueError(
+            "Unknown centering mode '%s' (expected 'geometric' or 'mass')" % center
+        )
+
+    def inertiaTensor(self, center: str = "geometric") -> np.ndarray:
+        """Computes the inertia tensor for this molecule.
+
+        With center="geometric" (default), the tensor is evaluated with respect to the geometric center
+        and all atoms have unit weight, so the result only depends on the geometry. With center="mass",
+        the usual mass-weighted tensor with respect to the center of mass is returned.
+        """
+        origin, weights = self._centerAndWeights(center)
+
+        relCoordinates = self.coordinates() - origin
+
+        # T_{ij} = sum_k w_k * (|r_k|^2 * delta_{ij} - r_k[i] * r_k[j])
+        # where w_k is the k-th atom's weight and r_k its position relative to the origin
         # See also https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
-        for i in range(3):
-            for j in range(3):
-                for currentAtom in self.atoms:
-                    relCoordinates = currentAtom.coordinates - center
-
-                    if i == j:
-                        tensor[i, j] += (
-                            currentAtom.element.mass()
-                            * np.linalg.norm(relCoordinates) ** 2
-                        )
-
-
-                    tensor[i, j] -= (
-                        currentAtom.element.mass()
-                        * relCoordinates[i]
-                        * relCoordinates[j]
-                    )
+        squaredNorms = np.sum(relCoordinates**2, axis=1)
+        tensor = np.sum(weights * squaredNorms) * np.eye(3)
+        tensor -= np.einsum("k,ki,kj->ij", weights, relCoordinates, relCoordinates)
 
         return tensor
 
-    def bringToStandardOrientation(self) -> None:
-        """Translates the molecule such that its center of mass is located at (0,0,0) and rotates it
-        such that the molecule's principle axes are aligned with the cartesian coordinate axes
-        """
-        # Bring center of mass to the origin
-        self.translate(-self.centerOfMass())
+    def bringToStandardOrientation(self, center: str = "geometric") -> None:
+        """Translates the molecule such that its center is located at (0,0,0) and rotates it
+        such that the molecule's principle axes are aligned with the cartesian coordinate axes.
 
-        inertiaTensor = self.inertiaTensor()
+        By default, the geometric center is used as the origin and the principle axes are determined
+        from the unweighted inertia tensor. With center="mass", the center of mass and the mass-weighted
+        inertia tensor are used instead.
+        """
+        # Bring the center to the origin
+        origin, _ = self._centerAndWeights(center)
+        self.translate(-origin)
+
+        inertiaTensor = self.inertiaTensor(center)
 
         # Make use of the fact that the inertia tensor is symmetric
         eigvals, eigvectors = np.linalg.eigh(inertiaTensor)

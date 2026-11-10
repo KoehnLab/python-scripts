@@ -5,8 +5,8 @@ from koehnlab.molecular import readMolecule, writeMolecule, Molecule
 import argparse
 
 
-def action_orient(molecule: Molecule) -> None:
-    molecule.bringToStandardOrientation()
+def action_orient(molecule: Molecule, center: str) -> None:
+    molecule.bringToStandardOrientation(center=center)
 
 
 def main() -> None:
@@ -34,12 +34,19 @@ def main() -> None:
         required=True,
     )
 
+    parser.add_argument(
+        "--center",
+        help="Origin for the 'orient' action: geometric center (unit-weighted inertia tensor) or center of mass (mass-weighted inertia tensor)",
+        choices=["geometric", "mass"],
+        default="geometric",
+    )
+
     args = parser.parse_args()
 
     molecule: Molecule = readMolecule(args.input)
 
     if args.action == "orient":
-        action_orient(molecule)
+        action_orient(molecule, args.center)
     else:
         raise RuntimeError("Action '%s' not implemented" % args.action)
 

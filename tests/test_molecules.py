@@ -18,7 +18,7 @@ class TestMolecules(unittest.TestCase):
 
         mol_A = readMolecule(os.path.join(data_dir, "biphenyl_unaligned.xyz"))
 
-        mol_A.bringToStandardOrientation()
+        mol_A.bringToStandardOrientation(center="mass")
 
         mol_B = readMolecule(os.path.join(data_dir, "biphenyl_aligned.xyz"))
 
