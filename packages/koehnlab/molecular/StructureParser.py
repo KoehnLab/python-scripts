@@ -8,6 +8,7 @@ import re
 import numpy as np
 
 from .Element import Element
+from .PointGroups import pointGroupGenerators, reflectionMatrix, rotationMatrix
 from .InternalCoordinates import (
     canonicalAngle,
     canonicalBond,
@@ -42,6 +43,10 @@ class SymmetryOperation:
     name: str
     matrix: np.ndarray
     cycles: Tuple[Tuple[int, ...], ...]
+    # Atoms that are explicitly stated to stay where they are
+    fixed: Tuple[int, ...] = ()
+    # Whether only some of the atoms are given and the remaining ones have to be inferred from the bonds
+    partial: bool = False
 
 
 @dataclass
@@ -58,6 +63,8 @@ class StructureSpec:
     # Generators of the symmetry group of the molecule (all operations are defined in the same frame, whose origin is a point
     # that is invariant under all operations)
     symmetry: List[SymmetryOperation] = field(default_factory=list)
+    # Point groups whose generators have been added to the symmetry operations (as partial operations)
+    groups: List[str] = field(default_factory=list)
 
     def nAtoms(self) -> int:
         return len(self.labels)
@@ -73,6 +80,7 @@ _LABEL = r"[A-Za-z]+\d+"
 _LABEL_CHAIN = re.compile(r"^\s*(%s(?:\s*-\s*%s)*)(.*)$" % (_LABEL, _LABEL))
 _LABEL_SPLIT = re.compile(r"([A-Za-z]+)(\d+)")
 _SYMMETRY = re.compile(r"^@symmetry\s+([^:]+?)\s*:(.*)$")
+_GROUP = re.compile(r"^@group\s+(\w+)$")
 _DIRECTIVE = re.compile(r"^@(\w+)$")
 GEOMETRIES = {"planar": "planar", "linear": "linear"}
 _WEIGHT = re.compile(r"(?<!\S)w\s*=\s*(\S+)")
@@ -97,21 +105,6 @@ def _parseAxis(text: str) -> np.ndarray:
     return axis / np.linalg.norm(axis)
 
 
-def _rotation(axis: np.ndarray, angle: float) -> np.ndarray:
-    cross = np.array(
-        [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
-    )
-    return (
-        math.cos(angle) * np.eye(3)
-        + math.sin(angle) * cross
-        + (1 - math.cos(angle)) * np.outer(axis, axis)
-    )
-
-
-def _reflection(normal: np.ndarray) -> np.ndarray:
-    return np.eye(3) - 2 * np.outer(normal, normal)
-
-
 def parseSymmetryOperation(text: str) -> np.ndarray:
     """Returns the matrix of a symmetry operation given by its name: i (inversion), sigma(axis) (mirror plane perpendicular
     to the axis), Cn(axis) (rotation by 360/n degrees about the axis, counterclockwise when looking against the axis) and
@@ -129,14 +122,14 @@ def parseSymmetryOperation(text: str) -> np.ndarray:
 
     kind, axis = match.group(1), _parseAxis(match.group(2))
     if kind == "sigma":
-        return _reflection(axis)
+        return reflectionMatrix(axis)
 
     order = int(kind[1:])
     if order < 1:
         raise ValueError("The order of '%s' must be positive" % text)
-    rotation = _rotation(axis, 2 * math.pi / order)
+    rotation = rotationMatrix(axis, 2 * math.pi / order)
 
-    return rotation if kind[0] == "C" else _reflection(axis) @ rotation
+    return rotation if kind[0] == "C" else reflectionMatrix(axis) @ rotation
 
 
 def parseStructureSpec(path: str) -> StructureSpec:
@@ -164,6 +157,14 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     ('C1<->C3') or cycles ('C1->C2->C3': the operation moves C1 to the position of C2, C2 to the position of C3 and C3 to the
     position of C1). Atoms that are not listed are not moved by the operation, i.e. they are located on the symmetry element.
     All operations refer to the same coordinate frame and its origin must be on every symmetry element.
+
+    The atoms of an operation can be incomplete if the list ends with '...', e.g. '@symmetry C2(z): C1<->C4, ...'. The
+    remaining atoms are then inferred from the bonds. A single label stands for an atom that stays where it is
+    ('@symmetry sigma(y): H1, ...').
+
+    The line '@group C2v' adds the generators of the point group (in a canonical frame, see pointGroupGenerators) as operations
+    whose atoms are inferred. The atoms of such an operation can be given by a '@symmetry' line with the same operation (it
+    is then treated as incomplete list).
     """
     spec = StructureSpec()
     labelIndex: Dict[str, int] = {}
@@ -202,10 +203,15 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
                 raise fail(lineNumber, str(error))
 
             cycles: List[Tuple[int, ...]] = []
+            fixed: List[int] = []
+            partial = False
             used: Dict[str, None] = {}
             for token in symmetry.group(2).split(","):
                 token = token.strip()
                 if not token:
+                    continue
+                if token == "...":
+                    partial = True
                     continue
 
                 if "<->" in token:
@@ -225,10 +231,23 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
                 indices = tuple(atomIndex(label, lineNumber) for label in labels)
                 if len(indices) > 1:
                     cycles.append(indices)
+                else:
+                    fixed.append(indices[0])
 
             spec.symmetry.append(
-                SymmetryOperation(symmetry.group(1).strip(), matrix, tuple(cycles))
+                SymmetryOperation(
+                    symmetry.group(1).strip(), matrix, tuple(cycles), tuple(fixed), partial
+                )
             )
+            continue
+
+        group = _GROUP.match(line)
+        if group is not None:
+            try:
+                pointGroupGenerators(group.group(1))
+            except ValueError as error:
+                raise fail(lineNumber, str(error))
+            spec.groups.append(group.group(1))
             continue
 
         directive = _DIRECTIVE.match(line)
@@ -323,6 +342,17 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
         spec.constraints.append(Constraint(key, value, weight))
 
     spec.bonds = sorted(bonds)
+
+    # The generators of point groups are operations, whose atoms have to be inferred, except for those atoms the user gave
+    # explicitly for an operation with the same matrix
+    for groupName in spec.groups:
+        for name, matrix in pointGroupGenerators(groupName):
+            existing = [op for op in spec.symmetry if np.allclose(op.matrix, matrix, atol=1e-8)]
+            if existing:
+                for operation in existing:
+                    operation.partial = True
+            else:
+                spec.symmetry.append(SymmetryOperation(name, matrix, (), (), True))
 
     if spec.nAtoms() == 0:
         raise StructureSpecError("%s: The specification does not contain any atoms" % source)

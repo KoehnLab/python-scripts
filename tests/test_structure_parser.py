@@ -138,6 +138,38 @@ class TestStructureParser(unittest.TestCase):
         with self.assertRaisesRegex(StructureSpecError, r":2:"):
             parseStructureSpecString("C1 - C2 1.0\n@symmetry C2(q): C1<->C2")
 
+    def test_partial_and_fixed(self):
+        spec = parseStructureSpecString(
+            "@symmetry C2(z): C1<->C2, H1, ...\n@symmetry sigma(y): C1<->C2\n"
+        )
+
+        first, second = spec.symmetry
+        self.assertTrue(first.partial)
+        self.assertEqual(first.cycles, ((0, 1),))
+        self.assertEqual(first.fixed, (2,))
+        self.assertFalse(second.partial)
+        self.assertEqual(second.fixed, ())
+
+    def test_groups(self):
+        spec = parseStructureSpecString(
+            "C1 - H1 1.0\n@group C2v\n@symmetry C2(z): H1<->H2\nC1 - H2\n"
+        )
+
+        self.assertEqual(spec.groups, ["C2v"])
+        names = [op.name for op in spec.symmetry]
+        # The explicit operation is kept (and becomes partial), the other generator is added
+        self.assertEqual(names, ["C2(z)", "sigma(y)"])
+        self.assertTrue(all(op.partial for op in spec.symmetry))
+        self.assertEqual(spec.symmetry[0].cycles, ((1, 2),))
+        self.assertEqual(spec.symmetry[1].cycles, ())
+
+        # Matches by matrix, not by spelling
+        spec = parseStructureSpecString("@group C2v\n@symmetry sigma(0,1,0): H1<->H2\nH1 - H2")
+        self.assertEqual([op.name for op in spec.symmetry], ["sigma(0,1,0)", "C2(z)"])
+
+        with self.assertRaises(StructureSpecError):
+            parseStructureSpecString("@group Xyz\nC1 - C2")
+
     def test_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "spec.txt")
