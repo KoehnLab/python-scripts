@@ -10,6 +10,7 @@ from koehnlab.molecular.InternalCoordinates import (
     canonicalBond,
     canonicalAngle,
     canonicalDihedral,
+    canonicalCoordinate,
     findAngles,
     findDihedrals,
 )
@@ -75,7 +76,7 @@ class TestInternalCoordinates(unittest.TestCase):
         )
 
         # Rotations and translations don't either
-        rotated = coords @ Rotation.random(random_state=1).as_matrix().T + 3.0
+        rotated = coords @ Rotation.from_quat(np.random.default_rng(1).normal(size=4)).as_matrix().T + 3.0
         assert_almost_equal(dihedralAngles(coords, d), dihedralAngles(rotated, d))
 
     def test_wrap(self):
@@ -93,6 +94,13 @@ class TestInternalCoordinates(unittest.TestCase):
         self.assertEqual(canonicalAngle(5, 2, 1), (1, 2, 5))
         self.assertEqual(canonicalDihedral(4, 3, 2, 1), (1, 2, 3, 4))
         self.assertEqual(canonicalDihedral(1, 2, 3, 4), (1, 2, 3, 4))
+
+        # The coordinate type follows from the number of atoms
+        self.assertEqual(canonicalCoordinate((3, 1)), (1, 3))
+        self.assertEqual(canonicalCoordinate([5, 2, 1]), (1, 2, 5))
+        self.assertEqual(canonicalCoordinate((4, 3, 2, 1)), (1, 2, 3, 4))
+        with self.assertRaises(ValueError):
+            canonicalCoordinate((1,))
 
     def test_enumeration(self):
         # Butane-like chain 0-1-2-3 with a branch 4 on atom 1 and a three-membered ring 5-6-7

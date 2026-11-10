@@ -111,7 +111,7 @@ class TestMolecules(unittest.TestCase):
 
                 for _ in range(10):
                     mol = _makeMolecule(elements, positions)
-                    mol.transform(Rotation.random(random_state=rng.integers(2**31)).as_matrix())
+                    mol.transform(Rotation.from_quat(rng.normal(size=4)).as_matrix())
                     mol.translate(rng.normal(size=3))
                     mol.bringToStandardOrientation()
 

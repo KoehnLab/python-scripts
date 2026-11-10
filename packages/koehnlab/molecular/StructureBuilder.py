@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -17,6 +17,7 @@ from .InternalCoordinates import (
     bondLengths,
     canonicalAngle,
     canonicalBond,
+    canonicalCoordinate,
     canonicalDihedral,
     dihedralAngles,
     findAngles,
@@ -148,7 +149,7 @@ def defaultGuess(spec: StructureSpec, geometry: Optional[str] = None) -> np.ndar
             constraint.indices
         ] = constraint.value
 
-    radii = []
+    radii: List[float] = []
     for element in spec.elements:
         z = element.atomicNumber()
         if z >= len(covalent_radii):
@@ -407,8 +408,7 @@ def resolveSpec(
     constraints: List[Constraint] = []
     for constraint in spec.constraints:
         indices = tuple(mapping[i] for i in constraint.indices)
-        canonical = {2: canonicalBond, 3: canonicalAngle, 4: canonicalDihedral}[len(indices)](*indices)  # type: ignore[arg-type]
-        constraints.append(Constraint(tuple(canonical), constraint.value, constraint.weight))
+        constraints.append(Constraint(canonicalCoordinate(indices), constraint.value, constraint.weight))
 
     symmetry = [
         SymmetryOperation(
@@ -461,14 +461,14 @@ class _Block:
 
 
 def _viaIndices(
-    function: Callable[[np.ndarray, Sequence[Tuple[int, ...]]], np.ndarray], atomsPerRow: int
+    function: Callable[[np.ndarray, np.ndarray], np.ndarray], atomsPerRow: int
 ) -> Callable[[np.ndarray], np.ndarray]:
     """Turns a function of coordinates and atom indices into a function of the positions of the atoms of each row"""
 
     def evaluate(positions: np.ndarray) -> np.ndarray:
         rows = positions.shape[0]
         indices = np.arange(rows * atomsPerRow).reshape(rows, atomsPerRow)
-        return function(positions.reshape(-1, 3), indices)  # type: ignore[arg-type]
+        return function(positions.reshape(-1, 3), indices)
 
     return evaluate
 
@@ -664,16 +664,16 @@ def _report(spec: StructureSpec, coordinates: np.ndarray) -> List[ParameterRepor
         indices = constraint.indices
         labels = tuple(spec.labels[i] for i in indices)
         if len(indices) == 2:
-            achieved = float(bondLengths(coordinates, [indices])[0])  # type: ignore[list-item]
+            achieved = float(bondLengths(coordinates, np.array([indices]))[0])
             deviation = achieved - constraint.value
             reports.append(ParameterReport(labels, constraint.value, achieved, deviation, True))
             continue
 
         if len(indices) == 3:
-            achieved = float(bondAngles(coordinates, [indices])[0])  # type: ignore[list-item]
+            achieved = float(bondAngles(coordinates, np.array([indices]))[0])
             deviation = achieved - constraint.value
         else:
-            achieved = float(dihedralAngles(coordinates, [indices])[0])  # type: ignore[list-item]
+            achieved = float(dihedralAngles(coordinates, np.array([indices]))[0])
             deviation = float(wrapAngle(achieved - constraint.value))
 
         reports.append(
@@ -861,12 +861,12 @@ def _checkSymmetry(spec: StructureSpec, generators: Sequence[Operation], group: 
         sign = 1.0 if np.linalg.det(matrix) > 0 else -1.0
         for constraint in spec.constraints:
             image = tuple(int(permutation[i]) for i in constraint.indices)
-            canonical = {2: canonicalBond, 3: canonicalAngle, 4: canonicalDihedral}[len(image)](*image)  # type: ignore[arg-type]
+            canonical = canonicalCoordinate(image)
             if canonical not in values:
                 continue
 
             expected = sign * constraint.value if len(image) == 4 else constraint.value
-            difference = values[canonical] - expected  # type: ignore[index]
+            difference = values[canonical] - expected
             if len(image) == 4:
                 difference = float(wrapAngle(difference))
             if abs(difference) > 1e-6:
@@ -920,10 +920,17 @@ def _solve(
     With symmetry, deviations from the symmetry operations of the problem are penalized (in addition)."""
 
     def solve(q0: np.ndarray, restraints: bool) -> np.ndarray:
+        def residuals(q: np.ndarray) -> np.ndarray:
+            return problem.residuals(basis @ q, restraints, symmetry)
+
+        def jacobian(q: np.ndarray) -> np.ndarray:
+            return problem.jacobian(basis @ q, restraints, symmetry) @ basis
+
+        # scipy has no type annotations, so the type of jac is inferred from its default value (a string)
         solution = least_squares(
-            lambda q: problem.residuals(basis @ q, restraints, symmetry),
+            residuals,
             q0,
-            jac=lambda q: problem.jacobian(basis @ q, restraints, symmetry) @ basis,
+            jac=cast(Any, jacobian),
             method="trf",
             max_nfev=1000,
             xtol=1e-14,

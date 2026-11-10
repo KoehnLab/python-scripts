@@ -181,7 +181,9 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
         if label in labelIndex:
             return labelIndex[label]
 
-        symbol = _LABEL_SPLIT.fullmatch(label).group(1)  # type: ignore[union-attr]
+        labelMatch = _LABEL_SPLIT.fullmatch(label)
+        assert labelMatch is not None, "labels are validated by the line pattern"
+        symbol = labelMatch.group(1)
         try:
             element = Element[symbol]
         except KeyError:
@@ -239,7 +241,7 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
                     if "<->" not in token:
                         chains.append(indices)
                 else:
-                    fixed.append(indices[0])
+                    fixed.extend(indices)
 
             spec.symmetry.append(
                 SymmetryOperation(

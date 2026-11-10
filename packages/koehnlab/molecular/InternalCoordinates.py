@@ -1,4 +1,4 @@
-from typing import Dict, List, Sequence, Set, Tuple
+from typing import Dict, List, Sequence, Set, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -15,6 +15,11 @@ from numpy.typing import ArrayLike
 Bond = Tuple[int, int]
 Angle = Tuple[int, int, int]
 Dihedral = Tuple[int, int, int, int]
+
+# Lists of coordinates can also be given as integer arrays with one row per coordinate
+Bonds = Union[Sequence[Bond], np.ndarray]
+Angles = Union[Sequence[Angle], np.ndarray]
+Dihedrals = Union[Sequence[Dihedral], np.ndarray]
 
 
 def canonicalBond(i: int, j: int) -> Bond:
@@ -33,6 +38,18 @@ def canonicalDihedral(i: int, j: int, k: int, l: int) -> Dihedral:
     return (i, j, k, l) if (i, j, k, l) <= (l, k, j, i) else (l, k, j, i)
 
 
+def canonicalCoordinate(indices: Sequence[int]) -> Tuple[int, ...]:
+    """Canonical form of a bond (2 atoms), angle (3 atoms) or dihedral angle (4 atoms)"""
+    if len(indices) == 2:
+        return canonicalBond(indices[0], indices[1])
+    if len(indices) == 3:
+        return canonicalAngle(indices[0], indices[1], indices[2])
+    if len(indices) == 4:
+        return canonicalDihedral(indices[0], indices[1], indices[2], indices[3])
+
+    raise ValueError("Expected 2, 3 or 4 atoms but got %d" % len(indices))
+
+
 def wrapAngle(angle: ArrayLike) -> np.ndarray:
     """Maps the given angle(s) in radians to the interval (-pi, pi]"""
     wrapped = np.mod(np.asarray(angle, dtype=float) + np.pi, 2 * np.pi) - np.pi
@@ -40,13 +57,13 @@ def wrapAngle(angle: ArrayLike) -> np.ndarray:
     return np.where(wrapped <= -np.pi, wrapped + 2 * np.pi, wrapped)
 
 
-def bondLengths(coordinates: np.ndarray, indices: Sequence[Bond]) -> np.ndarray:
+def bondLengths(coordinates: np.ndarray, indices: Bonds) -> np.ndarray:
     """Computes the length of all given bonds"""
     idx = np.asarray(indices, dtype=int).reshape(-1, 2)
     return np.linalg.norm(coordinates[idx[:, 1]] - coordinates[idx[:, 0]], axis=1)
 
 
-def bondAngles(coordinates: np.ndarray, indices: Sequence[Angle]) -> np.ndarray:
+def bondAngles(coordinates: np.ndarray, indices: Angles) -> np.ndarray:
     """Computes all given angles in radians (in the interval [0, pi])"""
     idx = np.asarray(indices, dtype=int).reshape(-1, 3)
     u = coordinates[idx[:, 0]] - coordinates[idx[:, 1]]
@@ -56,7 +73,7 @@ def bondAngles(coordinates: np.ndarray, indices: Sequence[Angle]) -> np.ndarray:
     return np.arctan2(np.linalg.norm(np.cross(u, v), axis=1), np.sum(u * v, axis=1))
 
 
-def dihedralAngles(coordinates: np.ndarray, indices: Sequence[Dihedral]) -> np.ndarray:
+def dihedralAngles(coordinates: np.ndarray, indices: Dihedrals) -> np.ndarray:
     """Computes all given dihedral angles in radians (in the interval (-pi, pi])"""
     idx = np.asarray(indices, dtype=int).reshape(-1, 4)
     b1 = coordinates[idx[:, 1]] - coordinates[idx[:, 0]]
