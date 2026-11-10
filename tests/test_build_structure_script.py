@@ -110,6 +110,24 @@ class TestBuildStructureScript(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("orient", err)
 
+    def test_point_group_with_guess(self):
+        spec = self.write("water.txt", "O1 - H1 0.96\nO1 - H2\nH1 - O1 - H2 104.5\n@group C2v\n")
+        guess = self.write("guess.xyz", "3\n\nO1 0 0 0\nH1 0.76 0 -0.52\nH2 -0.76 0 -0.52\n")
+        output = self.path("out.xyz")
+
+        self.assertEqual(self.run_script("-i", spec, "-o", output, "-g", guess, "--labels")[0], 0)
+        molecule, labels = readLabeledMolecule(output)
+        distances = [
+            np.linalg.norm(molecule.coordinates()[labels.index(h)] - molecule.coordinates()[labels.index("O1")])
+            for h in ("H1", "H2")
+        ]
+        assert_almost_equal(distances, [0.96, 0.96], decimal=6)
+
+        # Without a geometry, the mirror plane is ambiguous
+        code, err = self.run_script("-i", spec, "-o", output)
+        self.assertEqual(code, 2)
+        self.assertIn("ambiguous", err)
+
     def test_failure_exit_codes(self):
         # inconsistent parameters
         spec = self.write("bad.txt", "C1 - C2 1.0\nC2 - C3 1.0\nC1 - C3 5.0\n")

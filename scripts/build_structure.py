@@ -37,6 +37,13 @@ coordinate system whose origin lies on every symmetry element. The atoms are giv
 are located on the symmetry element. Parameters that are equivalent by symmetry are tied, so it is sufficient to specify one
 of them. Structures with symmetry are always brought into the standard orientation.
 
+Atoms of an operation can be left out: '@symmetry C2(z): C1<->C4, ...' (the trailing '...') lets the program infer the other atoms
+from the bonds, and '@group C2v' adds the generators of a point group (Cs, Ci, Cn, Cnv, Cnh, Dn, Dnh, Dnd, S2n, T, Td, Th, O, Oh, I,
+Ih) in a canonical frame (principal axis z, C2 axes along x, vertical mirror plane xz, horizontal mirror plane xy) with all atoms
+inferred. A '@symmetry' line with the same operation as one of the group provides atoms for it ('H1' alone: this atom stays where
+it is). If the bonds don't determine the atoms uniquely, the starting geometry (in the same frame) selects the best fit, or the
+program asks for more atoms.
+
 Atoms are identified by labels consisting of an element symbol and a number. If a starting geometry is given,
 its XYZ file may use such labels instead of plain element symbols (C1 x y z); otherwise the atoms are numbered per
 element in the order of the file (C1, C2, ..., H1, H2, ...). The bonds of the starting geometry are detected automatically.
