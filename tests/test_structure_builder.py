@@ -320,5 +320,122 @@ class TestBuildStructure(unittest.TestCase):
         assert_almost_equal(raw.coordinates()[0], np.zeros(3))
 
 
+BENZENE = """
+@planar
+C1 - C2 1.40
+C2 - C3 1.40
+C3 - C4 1.40
+C4 - C5 1.40
+C5 - C6 1.40
+C6 - C1 1.40
+C1 - H1 1.08
+C2 - H2 1.08
+C3 - H3 1.08
+C4 - H4 1.08
+C5 - H5 1.08
+C6 - H6 1.08
+C6 - C1 - C2 120
+C1 - C2 - C3 120
+C2 - C3 - C4 120
+C3 - C4 - C5 120
+C4 - C5 - C6 120
+C5 - C6 - C1 120
+"""
+
+
+class TestFlatMolecules(unittest.TestCase):
+
+    def test_planar_ring(self):
+        result = buildStructure(_parse(BENZENE))
+
+        self.assertTrue(result.converged)
+        coords = result.molecule.coordinates()
+        assert_almost_equal(coords[:, 2], np.zeros(12), decimal=12)
+
+        # The carbons form a regular hexagon (the hydrogens are not constrained to be symmetric)
+        carbons = coords[[result.labels.index("C%d" % i) for i in range(1, 7)]]
+        carbons = carbons - carbons.mean(axis=0)
+        assert_almost_equal(np.linalg.norm(carbons, axis=1), np.full(6, 1.40), decimal=6)
+
+        for i in range(1, 7):
+            carbon = coords[result.labels.index("C%d" % i)]
+            hydrogen = coords[result.labels.index("H%d" % i)]
+            self.assertAlmostEqual(float(np.linalg.norm(hydrogen - carbon)), 1.08, places=6)
+
+    def test_planar_polyene_with_dihedrals(self):
+        text = "@planar\n" + BUTADIENE + "\nC2 - C3 - C4 - H5 0\nH1 - C1 - C2 - C3 180"
+        result = buildStructure(_parse(text))
+
+        self.assertTrue(result.converged, result.format())
+        coords = result.molecule.coordinates()
+        assert_almost_equal(coords[:, 2], np.zeros(len(coords)), decimal=12)
+
+    def test_planar_geometry_argument(self):
+        spec = _parse("C1 - C2 1.4\nC2 - C3 1.4\nC3 - C4 1.4\nC1 - C2 - C3 120\nC2 - C3 - C4 120")
+        coords = buildStructure(spec, geometry="planar").molecule.coordinates()
+        assert_almost_equal(coords[:, 2], np.zeros(4), decimal=12)
+
+        # Without it, the default guess is not planar (torsion of the substituents is general)
+        general = buildStructure(spec).molecule.coordinates()
+        self.assertEqual(general.shape, (4, 3))
+
+    def test_planar_guess_is_projected(self):
+        biphenyl, labels = readLabeledMolecule(os.path.join(data_dir, "biphenyl_aligned.xyz"))
+        spec = _parse("@planar\nC1 - C2 1.40")
+
+        with self.assertWarns(UserWarning):
+            result = buildStructure(spec, biphenyl, labels)
+
+        coords = result.molecule.coordinates()
+        assert_almost_equal(coords[:, 2], np.zeros(22), decimal=10)
+
+        # A flat guess does not trigger a warning
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            buildStructure(spec, result.molecule, labels)
+
+    def test_planar_rejects_general_dihedrals(self):
+        with self.assertRaises(StructureSpecError):
+            buildStructure(_parse("@planar\nC1 - C2 - C3 - C4 90"))
+
+    def test_linear(self):
+        result = buildStructure(
+            _parse("@linear\nO1 - C1 1.16\nC1 - O2 1.17\nO1 - C1 - O2 180")
+        )
+
+        self.assertTrue(result.converged)
+        coords = result.molecule.coordinates()
+        assert_almost_equal(coords[:, :2], np.zeros((3, 2)), decimal=12)
+        assert_almost_equal(
+            np.abs(coords[result.labels.index("O1"), 2] - coords[result.labels.index("O2"), 2]), 2.33
+        )
+
+    def test_linear_without_angles(self):
+        result = buildStructure(_parse("@linear\nH1 - C1 1.06\nC1 - C2 1.20\nC2 - H2 1.06"))
+
+        self.assertTrue(result.converged)
+        coords = result.molecule.coordinates()
+        assert_almost_equal(coords[:, :2], np.zeros((4, 2)), decimal=12)
+        self.assertAlmostEqual(coords[:, 2].max() - coords[:, 2].min(), 3.32)
+
+    def test_linear_rejects_impossible_input(self):
+        invalid = {
+            "bent": "@linear\nC1 - C2 1.2\nC2 - C3 1.2\nC1 - C2 - C3 120",
+            "dihedral": "@linear\nC1 - C2 1.2\nC2 - C3 1.2\nC3 - C4 1.2\nC1 - C2 - C3 - C4 0",
+            "branched": "@linear\nC1 - C2 1.2\nC1 - C3 1.2\nC1 - C4 1.2",
+            "ring": "@linear\nC1 - C2 1.2\nC2 - C3 1.2\nC3 - C1 1.2",
+        }
+        for name, text in invalid.items():
+            with self.subTest(name):
+                with self.assertRaises(StructureSpecError):
+                    buildStructure(_parse(text))
+
+    def test_unknown_geometry(self):
+        with self.assertRaises(ValueError):
+            buildStructure(_parse("C1 - C2 1.4"), geometry="spherical")
+
+
 if __name__ == "__main__":
     unittest.main()

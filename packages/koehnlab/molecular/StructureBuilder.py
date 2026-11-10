@@ -4,6 +4,7 @@ from collections import deque
 from dataclasses import dataclass, field
 
 import math
+import warnings
 
 import numpy as np
 from ase.data import covalent_radii, vdw_radii
@@ -61,10 +62,12 @@ def _placeAtom(
     distance: float,
     angle: float,
     torsion: float,
+    planar: bool = False,
 ) -> np.ndarray:
     """Computes the position of a new atom that is bonded to center with the given distance. angle is the angle between
     the new atom, the center and the axisAtom. torsion is the dihedral angle new atom - center - axisAtom - reference
-    (if there is no reference, a deterministic arbitrary direction is used for torsion=0)."""
+    (if there is no reference, a deterministic arbitrary direction is used for torsion=0; if planar is set, this is a
+    direction in the xy plane)."""
     origin = coordinates[center]
     axis = coordinates[axisAtom] - origin
     axis = axis / np.linalg.norm(axis)
@@ -78,6 +81,9 @@ def _placeAtom(
             e1 = v / norm
     if e1 is None:
         e1 = _arbitraryPerpendicular(axis)
+        if planar:
+            e1 = np.cross(np.array([0.0, 0.0, 1.0]), axis)
+            e1 = e1 / np.linalg.norm(e1)
 
     e2 = np.cross(e1, axis)
 
@@ -88,7 +94,7 @@ def _placeAtom(
     return origin + distance * direction
 
 
-def defaultGuess(spec: StructureSpec) -> np.ndarray:
+def defaultGuess(spec: StructureSpec, geometry: Optional[str] = None) -> np.ndarray:
     """Generates a rough initial geometry (in Angstrom) for the given specification solely from the connectivity.
 
     The atoms are placed one after another along a spanning tree of the bond graph. For every atom, bond length, angle
@@ -97,7 +103,14 @@ def defaultGuess(spec: StructureSpec) -> np.ndarray:
     (120 degrees for 2 or 3, 109.47 degrees for 4 and 90 degrees for more neighbors) and torsions that distribute the
     substituents of an atom evenly (staggered/planar). Bonds that close rings are ignored, so rings are in general not
     closed in the result. Atoms are in the same order as in the specification.
+
+    For geometry="planar" (default: the geometry of the specification) all atoms are placed in the xy plane, i.e. all torsions
+    are 0 or 180 degrees (alternating, unless the specification contains a dihedral). For geometry="linear", all atoms are
+    placed on the z axis.
     """
+    geometry = spec.geometry if geometry is None else geometry
+    planar = geometry == "planar"
+    linear = geometry == "linear"
     nAtoms = spec.nAtoms()
     neighbors = _neighborLists(spec)
 
@@ -149,7 +162,8 @@ def defaultGuess(spec: StructureSpec) -> np.ndarray:
         others = [n for n in neighbors[center] if placed[n] and n != atom]
 
         if not others:
-            coordinates[atom] = coordinates[center] + distance * np.array([0.0, 0.0, 1.0])
+            direction = np.array([1.0, 0.0, 0.0] if planar else [0.0, 0.0, 1.0])
+            coordinates[atom] = coordinates[center] + distance * direction
             placed[atom] = True
             continue
 
@@ -186,6 +200,8 @@ def defaultGuess(spec: StructureSpec) -> np.ndarray:
         angle = angleValues.get(
             canonicalAngle(atom, center, axisAtom), _defaultAngle(len(neighbors[center]))
         )
+        if linear:
+            angle = math.pi
 
         key = (
             canonicalDihedral(atom, center, axisAtom, reference)
@@ -194,13 +210,17 @@ def defaultGuess(spec: StructureSpec) -> np.ndarray:
         )
         if key is not None and key in dihedralValues:
             torsion = dihedralValues[key]
+            if planar:
+                torsion = round(torsion / math.pi) * math.pi
+        elif planar:
+            torsion = (math.pi if reference is not None else 0.0) + (len(others) - 1) * math.pi
         else:
             # Distribute the substituents of the center evenly around the axis
             step = 2 * math.pi / (len(neighbors[center]) - 1)
             torsion = (math.pi if reference is not None else 0.0) + (len(others) - 1) * step
 
         coordinates[atom] = _placeAtom(
-            coordinates, center, axisAtom, reference, distance, angle, torsion
+            coordinates, center, axisAtom, reference, distance, angle, torsion, planar
         )
         placed[atom] = True
 
@@ -311,7 +331,7 @@ def resolveSpec(
         canonical = {2: canonicalBond, 3: canonicalAngle, 4: canonicalDihedral}[len(indices)](*indices)  # type: ignore[arg-type]
         constraints.append(Constraint(tuple(canonical), constraint.value, constraint.weight))
 
-    return StructureSpec(labels, elements, sorted(bonds), constraints)
+    return StructureSpec(labels, elements, sorted(bonds), constraints, spec.geometry)
 
 
 # Step for the numerical derivatives of the residuals
@@ -414,15 +434,20 @@ class _Problem:
         restraintBonds = unspecified(spec.bonds, bonds).reshape(-1, 2)
         restraintAngles = unspecified(findAngles(spec.bonds, self.nAtoms), angles).reshape(-1, 3)
 
-        # The torsion about a bond is a single degree of freedom, but there are many (redundant) dihedrals around it. So only
-        # one dihedral per bond is restrained and none if a dihedral about this bond is specified anyway
+        # The torsion about a bond is a single degree of freedom, but there are many (redundant) dihedrals around it. So the
+        # restraints of all dihedrals about the same bond share the weight of a single one (otherwise, twisting a bond would
+        # be penalized more than bending the structure). No restraints are needed for bonds with a specified dihedral
         specifiedBonds = {frozenset(row[1:3]) for row in dihedrals.tolist()}
-        torsions: Dict[frozenset, Tuple[int, ...]] = {}
-        for dihedral in sorted(findDihedrals(spec.bonds, self.nAtoms)):
-            central = frozenset(dihedral[1:3])
-            if central not in specifiedBonds and central not in torsions:
-                torsions[central] = dihedral
-        restraintDihedrals = np.array(list(torsions.values()), dtype=int).reshape(-1, 4)
+        torsions = [
+            d
+            for d in sorted(findDihedrals(spec.bonds, self.nAtoms))
+            if frozenset(d[1:3]) not in specifiedBonds
+        ]
+        restraintDihedrals = np.array(torsions, dtype=int).reshape(-1, 4)
+        counts: Dict[frozenset, int] = {}
+        for d in torsions:
+            counts[frozenset(d[1:3])] = counts.get(frozenset(d[1:3]), 0) + 1
+        torsionWeights = np.array([1 / math.sqrt(counts[frozenset(d[1:3])]) for d in torsions])
 
         bondRef = bondLengths(reference, restraintBonds)
         angleRef = bondAngles(reference, restraintAngles)
@@ -460,6 +485,7 @@ class _Problem:
             _Block(
                 restraintDihedrals,
                 lambda P: _RESTRAINT_WEIGHT
+                * torsionWeights
                 * wrapAngle(_viaIndices(dihedralAngles, 4)(P) - dihedralRef)
                 / _ANGLE_SCALE,
             ),
@@ -523,6 +549,121 @@ def _report(spec: StructureSpec, coordinates: np.ndarray) -> List[ParameterRepor
     return reports
 
 
+# Tolerance for angles that are supposed to be 0 or 180 degrees in planar/linear molecules
+_FLAT_ANGLE_TOLERANCE = math.radians(1e-3)
+
+# Root mean square distance (Angstrom) from the plane/line above which a starting geometry is considered to not be flat/linear
+_FLATNESS_WARNING = 0.05
+
+
+def _checkGeometry(spec: StructureSpec, geometry: str) -> None:
+    """Checks that the specification can be fulfilled by a molecule of the given geometry"""
+    if geometry not in ("general", "planar", "linear"):
+        raise ValueError("Unknown geometry '%s'" % geometry)
+
+    for constraint in spec.constraints:
+        labels = " - ".join(spec.labels[i] for i in constraint.indices)
+        kind = constraint.kind()
+
+        if geometry == "planar" and kind == "dihedral":
+            deviation = abs(constraint.value - round(constraint.value / math.pi) * math.pi)
+            if deviation > _FLAT_ANGLE_TOLERANCE:
+                raise StructureSpecError(
+                    "Dihedral angle %s = %.4f degrees is not possible in a planar molecule (must be 0 or 180)"
+                    % (labels, math.degrees(constraint.value))
+                )
+
+        if geometry == "linear":
+            if kind == "dihedral":
+                raise StructureSpecError(
+                    "Dihedral angle %s is not defined in a linear molecule" % labels
+                )
+            if kind == "angle" and abs(constraint.value - math.pi) > _FLAT_ANGLE_TOLERANCE:
+                raise StructureSpecError(
+                    "Angle %s = %.4f degrees is not possible in a linear molecule (must be 180)"
+                    % (labels, math.degrees(constraint.value))
+                )
+
+    if geometry == "linear":
+        degrees = np.zeros(spec.nAtoms(), dtype=int)
+        for i, j in spec.bonds:
+            degrees[i] += 1
+            degrees[j] += 1
+        if np.any(degrees > 2) or len(spec.bonds) != spec.nAtoms() - 1:
+            raise StructureSpecError(
+                "A linear molecule must be a chain of atoms: every atom can have at most two bonds and there can be no rings"
+            )
+
+
+# Cartesian axes in which the atoms of the different geometries are located
+_AXES: Dict[str, List[int]] = {"general": [0, 1, 2], "planar": [0, 1], "linear": [2]}
+
+
+def _flatten(coordinates: np.ndarray, geometry: str) -> np.ndarray:
+    """Projects the coordinates onto their best-fit plane (placed in the xy plane) or line (placed on the z axis)"""
+    axes = _AXES[geometry]
+    if len(axes) == 3:
+        return coordinates
+
+    centered = coordinates - coordinates.mean(axis=0)
+    _, _, directions = np.linalg.svd(centered, full_matrices=True)
+    components = centered @ directions.T
+
+    # Keep the most extended directions, they are the plane/line
+    projected = np.zeros_like(coordinates)
+    projected[:, axes] = components[:, : len(axes)]
+
+    discarded = components[:, len(axes) :]
+    if np.sqrt(np.mean(np.sum(discarded**2, axis=1))) > _FLATNESS_WARNING:
+        warnings.warn(
+            "The starting geometry is far from %s, it is projected onto the best-fit %s"
+            % (
+                "planar" if geometry == "planar" else "linear",
+                "plane" if geometry == "planar" else "line",
+            ),
+            stacklevel=3,
+        )
+
+    return projected
+
+
+def _solve(
+    problem: _Problem, geometry: str, start: np.ndarray, restraints: bool
+) -> np.ndarray:
+    """Least-squares solution (as array of shape (number of atoms, 3)), starting from the given coordinates and with all
+    atoms restricted to the axes belonging to the geometry. If restraints is set, the weak terms of the problem are
+    included, which keep everything unspecified close to the start. The solution is then computed once more without them
+    to remove the compromises they cause. Without restraints, only the specified parameters are fulfilled."""
+    nAtoms = start.shape[0]
+    axes = _AXES[geometry]
+    columns = (3 * np.arange(nAtoms)[:, None] + np.array(axes)[None, :]).ravel()
+
+    def embed(reduced: np.ndarray) -> np.ndarray:
+        full = np.zeros((nAtoms, 3))
+        full[:, axes] = reduced.reshape(nAtoms, len(axes))
+        return full.ravel()
+
+    def solve(x0: np.ndarray, restraints: bool) -> np.ndarray:
+        solution = least_squares(
+            lambda x: problem.residuals(embed(x), restraints),
+            x0,
+            jac=lambda x: problem.jacobian(embed(x), restraints)[:, columns],
+            method="trf",
+            max_nfev=1000,
+            xtol=1e-14,
+            ftol=1e-14,
+            gtol=1e-14,
+        )
+        return solution.x
+
+    solution = start[:, axes].ravel()
+    if restraints:
+        solution = solve(solution, True)
+    solution = solve(solution, False)
+
+    return embed(solution).reshape(nAtoms, 3)
+
+
 def buildStructure(
     spec: StructureSpec,
     guess: Optional[Molecule] = None,
@@ -530,6 +671,7 @@ def buildStructure(
     orient: bool = True,
     maxAttempts: int = 5,
     seed: int = 0,
+    geometry: Optional[str] = None,
 ) -> BuildResult:
     """Computes Cartesian coordinates that fulfill the structure parameters of the given specification.
 
@@ -542,16 +684,31 @@ def buildStructure(
     depending on the seed) and the optimization is repeated, up to maxAttempts times. The best result is returned and
     BuildResult.converged tells whether all parameters are fulfilled.
 
+    The geometry "planar" or "linear" (default: the one of the specification) restricts all atoms to a plane or a line. This
+    is exact, it is not a penalty. A starting geometry is projected onto the plane/line. Note that dihedral angles are
+    discrete in a planar molecule (0 or 180 degrees, i.e. cis or trans) and cannot be changed continuously by the
+    optimization; they have to be realized by the starting geometry and are reported as not satisfied otherwise.
+
     With orient=True, the result is translated and rotated into the standard orientation (the solution is otherwise
     arbitrary with respect to translation and rotation).
     """
+    geometry = spec.geometry if geometry is None else geometry
+    _checkGeometry(spec, geometry)
+
     if guess is not None:
         spec = resolveSpec(spec, guess, guessLabels)
-        start = guess.coordinates()
+        start = _flatten(guess.coordinates(), geometry)
     else:
-        start = defaultGuess(spec)
+        start = defaultGuess(spec, geometry)
+
+    if guess is None and geometry == "planar":
+        # Rings can only be closed by choosing cis/trans torsions appropriately, which can't be done continuously in a
+        # planar molecule. So first fulfill the parameters without restricting the guess to a plane (which twists rings into
+        # shape) and use the result, projected onto its best-fit plane, as starting point
+        start = _flatten(_solve(_Problem(spec, start), "general", start, False), geometry)
 
     problem = _Problem(spec, start)
+    axes = _AXES[geometry]
 
     rng = np.random.default_rng(seed)
     best: Optional[np.ndarray] = None
@@ -563,36 +720,14 @@ def buildStructure(
         attempts = attempt + 1
         x0 = start.copy()
         if attempt > 0:
-            x0 += rng.normal(scale=0.1 * attempt, size=x0.shape)
+            x0[:, axes] += rng.normal(scale=0.1 * attempt, size=(spec.nAtoms(), len(axes)))
 
-        # First solve with the weak terms and then once more without them to remove the compromises they cause
-        solution = least_squares(
-            problem.residuals,
-            x0.ravel(),
-            jac=problem.jacobian,
-            method="trf",
-            max_nfev=1000,
-            xtol=1e-14,
-            ftol=1e-14,
-            gtol=1e-14,
-        )
-        solution = least_squares(
-            lambda x: problem.residuals(x, restraints=False),
-            solution.x,
-            jac=lambda x: problem.jacobian(x, restraints=False),
-            method="trf",
-            max_nfev=1000,
-            xtol=1e-14,
-            ftol=1e-14,
-            gtol=1e-14,
-        )
-
-        cost = float(np.sum(problem.residuals(solution.x, restraints=False) ** 2))
-        coordinates = solution.x.reshape(-1, 3)
-        converged = all(r.isSatisfied() for r in _report(spec, coordinates))
+        full = _solve(problem, geometry, x0, True)
+        cost = float(np.sum(problem.residuals(full, restraints=False) ** 2))
+        converged = all(r.isSatisfied() for r in _report(spec, full.reshape(-1, 3)))
 
         if best is None or (converged, -cost) > (bestConverged, -bestCost):
-            best, bestCost, bestConverged = solution.x, cost, converged
+            best, bestCost, bestConverged = full, cost, converged
 
         if converged:
             break
