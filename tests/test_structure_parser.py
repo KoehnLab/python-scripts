@@ -66,6 +66,17 @@ class TestStructureParser(unittest.TestCase):
         self.assertEqual(spec.constraints[1].indices, (0, 1, 2))
         self.assertEqual(spec.constraints[2].indices, (0, 1))
 
+    def test_directives(self):
+        self.assertEqual(parseStructureSpecString("C1 - C2 1.4").geometry, "general")
+        self.assertEqual(parseStructureSpecString("@planar\nC1 - C2 1.4").geometry, "planar")
+        self.assertEqual(parseStructureSpecString("C1 - C2 1.4\n  @linear  # comment").geometry, "linear")
+        self.assertEqual(parseStructureSpecString("@planar\n@planar\nC1 - C2 1.4").geometry, "planar")
+
+        for text in ("@planar\n@linear\nC1 - C2", "@flat\nC1 - C2", "@\nC1 - C2"):
+            with self.subTest(text):
+                with self.assertRaises(StructureSpecError):
+                    parseStructureSpecString(text)
+
     def test_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "spec.txt")

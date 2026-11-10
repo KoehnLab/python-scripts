@@ -40,6 +40,8 @@ class StructureSpec:
     # Connectivity as a sorted list of canonical bonds
     bonds: List[Tuple[int, int]] = field(default_factory=list)
     constraints: List[Constraint] = field(default_factory=list)
+    # Dimensionality of the molecule: "general" (3D), "planar" (all atoms in one plane) or "linear" (all atoms on one line)
+    geometry: str = "general"
 
     def nAtoms(self) -> int:
         return len(self.labels)
@@ -54,6 +56,8 @@ class StructureSpec:
 _LABEL = r"[A-Za-z]+\d+"
 _LABEL_CHAIN = re.compile(r"^\s*(%s(?:\s*-\s*%s)*)(.*)$" % (_LABEL, _LABEL))
 _LABEL_SPLIT = re.compile(r"([A-Za-z]+)(\d+)")
+_DIRECTIVE = re.compile(r"^@(\w+)$")
+GEOMETRIES = {"planar": "planar", "linear": "linear"}
 _WEIGHT = re.compile(r"(?<!\S)w\s*=\s*(\S+)")
 
 # Parameters that differ by less than this are considered to be identical
@@ -77,6 +81,8 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
 
     Each line may end with 'w=<weight>' to weight the parameter relative to others (default: 1).
     The atoms are ordered by their first appearance.
+
+    The directives '@planar' and '@linear' state that all atoms of the molecule are located in one plane or on one line.
     """
     spec = StructureSpec()
     labelIndex: Dict[str, int] = {}
@@ -105,6 +111,20 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     for lineNumber, rawLine in enumerate(text.splitlines(), start=1):
         line = rawLine.split("#", 1)[0].strip()
         if not line:
+            continue
+
+        directive = _DIRECTIVE.match(line)
+        if directive is not None:
+            name = directive.group(1)
+            if name not in GEOMETRIES:
+                raise fail(
+                    lineNumber,
+                    "Unknown directive '@%s' (expected one of: %s)"
+                    % (name, ", ".join("@" + g for g in GEOMETRIES)),
+                )
+            if spec.geometry != "general" and spec.geometry != GEOMETRIES[name]:
+                raise fail(lineNumber, "Conflicting directives '@planar' and '@linear'")
+            spec.geometry = GEOMETRIES[name]
             continue
 
         match = _LABEL_CHAIN.match(line)
