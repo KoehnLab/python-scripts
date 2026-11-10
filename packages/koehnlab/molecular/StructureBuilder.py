@@ -296,6 +296,13 @@ _CLASH_FACTOR = 0.7
 # The same for atoms that are bonded to a common atom, with the sum of the covalent radii (these atoms are much closer)
 _CLASH_FACTOR_1_3 = 0.9
 
+# No two atoms may come closer than this distance (Angstrom). This never matters for sensible structures, but prevents atoms from
+# lying on top of each other, which can satisfy parameters that are not sufficient to determine the structure
+_MINIMUM_DISTANCE = 0.3
+# Weight of this requirement relative to the specified parameters: If parameters are impossible to fulfill together, the
+# parameters give way and not the minimum distance
+_MINIMUM_DISTANCE_WEIGHT = 100.0
+
 # Maximum deviations of bond lengths (Angstrom) and angles (radians) for a structure to count as converged
 _LENGTH_TOLERANCE = 1e-4
 _ANGLE_TOLERANCE = math.radians(0.01)
@@ -326,6 +333,13 @@ class BuildResult:
     converged: bool
     attempts: int
     parameters: List[ParameterReport] = field(default_factory=list)
+    # The two closest atoms and their distance (Angstrom)
+    closestAtoms: Tuple[str, str] = ("", "")
+    minimumDistance: float = math.inf
+
+    def isSeparated(self) -> bool:
+        """Whether all atoms are at least the minimum distance apart"""
+        return self.minimumDistance >= _MINIMUM_DISTANCE - _LENGTH_TOLERANCE
 
     def format(self) -> str:
         """Human-readable table of all specified parameters and how well they are fulfilled"""
@@ -339,6 +353,17 @@ class BuildResult:
                     parameter.achieved,
                     parameter.deviation,
                     "" if parameter.isSatisfied() else "  <-- not satisfied",
+                )
+            )
+        if self.closestAtoms[0] and math.isfinite(self.minimumDistance):
+            lines.append(
+                "%-28s %12s %12.6f %12s%s"
+                % (
+                    "closest atoms: " + " - ".join(self.closestAtoms),
+                    "> %.2f" % _MINIMUM_DISTANCE,
+                    self.minimumDistance,
+                    "",
+                    "" if self.isSeparated() else "  <-- too close",
                 )
             )
         return "\n".join(lines)
@@ -497,6 +522,17 @@ class _Problem:
             ),
         ]
 
+        # No two atoms may be closer than the minimum distance (no residual if they are not)
+        allPairs = np.column_stack(np.triu_indices(self.nAtoms, k=1)).reshape(-1, 2)
+        self.constraints.append(
+            _Block(
+                allPairs,
+                lambda P: _MINIMUM_DISTANCE_WEIGHT
+                * np.maximum(0.0, _MINIMUM_DISTANCE - _viaIndices(bondLengths, 2)(P))
+                / _LENGTH_SCALE,
+            )
+        )
+
         # Restraints for everything that is not specified
         def unspecified(candidates: Sequence[Tuple[int, ...]], fixed: np.ndarray) -> np.ndarray:
             fixedSet = {tuple(row) for row in fixed.tolist()}
@@ -609,6 +645,17 @@ class _Problem:
             row += block.size()
 
         return jacobian
+
+
+def _closestAtoms(coordinates: np.ndarray) -> Tuple[int, int, float]:
+    """The two closest atoms and their distance"""
+    if len(coordinates) < 2:
+        return (0, 0, math.inf)
+
+    distances = np.linalg.norm(coordinates[:, None] - coordinates[None], axis=2)
+    np.fill_diagonal(distances, np.inf)
+    i, j = np.unravel_index(np.argmin(distances), distances.shape)
+    return (int(i), int(j), float(distances[i, j]))
 
 
 def _report(spec: StructureSpec, coordinates: np.ndarray) -> List[ParameterReport]:
@@ -911,7 +958,8 @@ def buildStructure(
 
     If the parameters are not fulfilled after an attempt, the starting coordinates are randomly displaced (reproducibly,
     depending on the seed) and the optimization is repeated, up to maxAttempts times. The best result is returned and
-    BuildResult.converged tells whether all parameters are fulfilled.
+    BuildResult.converged tells whether all parameters are fulfilled and no two atoms are closer than 0.3 Angstrom (a
+    requirement that prevents atoms from being placed on top of each other).
 
     The geometry "planar" or "linear" (default: the one of the specification) restricts all atoms to a plane or a line. This
     is exact, it is not a penalty. A starting geometry is projected onto the plane/line. Note that dihedral angles are
@@ -997,7 +1045,9 @@ def buildStructure(
 
         full = _solve(problem, basis, x0, True)
         cost = float(np.sum(problem.residuals(full, restraints=False) ** 2))
-        converged = all(r.isSatisfied() for r in _report(spec, full.reshape(-1, 3)))
+        converged = all(r.isSatisfied() for r in _report(spec, full.reshape(-1, 3))) and (
+            _closestAtoms(full.reshape(-1, 3))[2] >= _MINIMUM_DISTANCE - _LENGTH_TOLERANCE
+        )
 
         if best is None or (converged, -cost) > (bestConverged, -bestCost):
             best, bestCost, bestConverged = full, cost, converged
@@ -1013,10 +1063,14 @@ def buildStructure(
     if orient:
         molecule.bringToStandardOrientation()
 
+    first, second, closest = _closestAtoms(molecule.coordinates())
+
     return BuildResult(
         molecule=molecule,
         labels=list(spec.labels),
         converged=bestConverged,
         attempts=attempts,
         parameters=_report(spec, molecule.coordinates()),
+        closestAtoms=(spec.labels[first], spec.labels[second]),
+        minimumDistance=closest,
     )

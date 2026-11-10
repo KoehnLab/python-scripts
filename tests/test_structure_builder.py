@@ -266,6 +266,43 @@ class TestBuildStructure(unittest.TestCase):
         folded[2] = folded[0] + 0.1
         self.assertGreater(np.abs(clashes.residuals(folded)).max(), 5)
 
+    def test_minimum_distance_is_reported(self):
+        result = buildStructure(_parse("O1 - H1 0.96\nO1 - H2 0.97\nH1 - O1 - H2 104.5"))
+
+        self.assertTrue(result.isSeparated())
+        self.assertAlmostEqual(result.minimumDistance, 0.96, places=6)
+        self.assertEqual(result.closestAtoms, ("O1", "H1"))
+        self.assertIn("closest atoms: O1 - H1", result.format())
+        self.assertNotIn("too close", result.format())
+
+        # A single atom has no neighbors
+        single = buildStructure(_parse("@symmetry sigma(x): C1"))
+        self.assertTrue(single.converged)
+        self.assertNotIn("closest atoms", single.format())
+
+    def test_atoms_never_get_closer_than_0_3_angstrom(self):
+        # 5 degrees between two bonds of 1.4 Angstrom would put the outer atoms 0.12 Angstrom apart
+        result = buildStructure(_parse("C1 - C2 1.4\nC2 - C3 1.4\nC1 - C2 - C3 5"), maxAttempts=2)
+        self.assertFalse(result.converged)
+        self.assertGreaterEqual(result.minimumDistance, 0.3 - 1e-4)
+
+        # Atoms of a starting geometry that lie on top of each other are pushed apart (to the minimum distance)
+        guess = Molecule(
+            [
+                Atom(Element.C, [0.0, 0.0, 0.0]),
+                Atom(Element.C, [1.5, 0.0, 0.0]),
+                Atom(Element.C, [0.05, 0.1, 0.0]),
+            ]
+        )
+        result = buildStructure(_parse("C1 - C2 1.5\nC2 - C3 1.5"), guess, ["C1", "C2", "C3"])
+        self.assertTrue(result.converged, result.format())
+        self.assertAlmostEqual(result.minimumDistance, 0.3, places=6)
+
+        # No effect on sensible structures: the requirement only contributes residuals if it is violated
+        chain = _parse("C1 - C2 1.5\nC2 - C3 1.5")
+        problem = _Problem(chain, defaultGuess(chain))
+        self.assertEqual(float(np.abs(problem.constraints[-1].residuals(defaultGuess(chain))).max()), 0.0)
+
     def test_water(self):
         result = buildStructure(_parse("O1 - H1 0.96\nO1 - H2 0.97\nH1 - O1 - H2 104.5"))
 

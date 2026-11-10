@@ -5,7 +5,8 @@
 The parameters are given in a text file with one parameter per line (see the example below). They are treated as equations
 for the Cartesian coordinates, which are solved by an optimization. So the parameters can be anything that is convenient,
 in particular they don't have to form a Z-matrix. Whatever is not specified stays close to the starting geometry, which
-is either provided via --guess or, if not, automatically generated from the connectivity.
+is either provided via --guess or, if not, automatically generated from the connectivity. No two atoms can come closer than
+0.3 Angstrom, which prevents atoms from being placed on top of each other.
 """
 
 from koehnlab.molecular import (
