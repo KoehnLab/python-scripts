@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, cast
+from typing import AbstractSet, Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -303,6 +303,37 @@ _MINIMUM_DISTANCE = 0.6
 # Weight of this requirement relative to the specified parameters: If parameters are impossible to fulfill together, the
 # parameters give way and not the minimum distance
 _MINIMUM_DISTANCE_WEIGHT = 100.0
+# Atoms must also be farther apart than this factor times the sum of their covalent radii, except if the distance of the
+# pair is specified explicitly (or is equivalent by symmetry to one that is). The shortest real bonds (triple bonds
+# like N-N with 0.78) stay above this ratio. Multiple bonds between metals can be shorter, but their lengths have to be
+# specified anyway to obtain the desired structure
+_MINIMUM_DISTANCE_COVALENT_FACTOR = 0.75
+
+
+def _minimumDistances(spec: StructureSpec, exempt: AbstractSet[Tuple[int, int]] = frozenset()) -> np.ndarray:
+    """Matrix of the minimum distances for all pairs of atoms: The absolute minimum distance and the fraction of the sum of
+    the covalent radii, the latter not for the exempt pairs (given as sorted index tuples)"""
+    covalent = np.array([covalent_radii[e.atomicNumber()] for e in spec.elements])
+    limits = np.maximum(
+        _MINIMUM_DISTANCE, _MINIMUM_DISTANCE_COVALENT_FACTOR * (covalent[:, None] + covalent[None, :])
+    )
+    for i, j in exempt:
+        limits[i, j] = limits[j, i] = _MINIMUM_DISTANCE
+    return limits
+
+
+def _explicitPairs(spec: StructureSpec, group: "Sequence[Operation]" = ()) -> Set[Tuple[int, int]]:
+    """The pairs of atoms with an explicitly specified distance, including all pairs that are equivalent by symmetry"""
+    pairs = set()
+    for constraint in spec.constraints:
+        if len(constraint.indices) != 2:
+            continue
+        i, j = constraint.indices
+        pairs.add((min(i, j), max(i, j)))
+        for permutation, _ in group:
+            a, b = int(permutation[i]), int(permutation[j])
+            pairs.add((min(a, b), max(a, b)))
+    return pairs
 
 # Maximum deviations of bond lengths (Angstrom) and angles (radians) for a structure to count as converged
 _LENGTH_TOLERANCE = 1e-4
@@ -337,10 +368,12 @@ class BuildResult:
     # The two closest atoms and their distance (Angstrom)
     closestAtoms: Tuple[str, str] = ("", "")
     minimumDistance: float = math.inf
+    # The distance that this pair of atoms has to exceed
+    requiredDistance: float = _MINIMUM_DISTANCE
 
     def isSeparated(self) -> bool:
-        """Whether all atoms are at least the minimum distance apart"""
-        return self.minimumDistance >= _MINIMUM_DISTANCE - _LENGTH_TOLERANCE
+        """Whether all atoms are far enough apart (the closest pair relative to its requirement is checked)"""
+        return self.minimumDistance >= self.requiredDistance - _LENGTH_TOLERANCE
 
     def format(self) -> str:
         """Human-readable table of all specified parameters and how well they are fulfilled"""
@@ -361,7 +394,7 @@ class BuildResult:
                 "%-28s %12s %12.6f %12s%s"
                 % (
                     "closest atoms: " + " - ".join(self.closestAtoms),
-                    "> %.2f" % _MINIMUM_DISTANCE,
+                    "> %.2f" % self.requiredDistance,
                     self.minimumDistance,
                     "",
                     "" if self.isSeparated() else "  <-- too close",
@@ -482,8 +515,10 @@ class _Problem:
         spec: StructureSpec,
         reference: np.ndarray,
         generators: Sequence[Tuple[np.ndarray, np.ndarray]] = (),
+        exempt: AbstractSet[Tuple[int, int]] = frozenset(),
     ):
         self.nAtoms = spec.nAtoms()
+        self.minimumDistances = _minimumDistances(spec, exempt)
 
         specified = {2: [], 3: [], 4: []}  # type: Dict[int, List[Constraint]]
         for constraint in spec.constraints:
@@ -524,11 +559,12 @@ class _Problem:
 
         # No two atoms may be closer than the minimum distance (no residual if they are not)
         allPairs = np.column_stack(np.triu_indices(self.nAtoms, k=1)).reshape(-1, 2)
+        pairLimits = self.minimumDistances[allPairs[:, 0], allPairs[:, 1]]
         self.constraints.append(
             _Block(
                 allPairs,
                 lambda P: _MINIMUM_DISTANCE_WEIGHT
-                * np.maximum(0.0, _MINIMUM_DISTANCE - _viaIndices(bondLengths, 2)(P))
+                * np.maximum(0.0, pairLimits - _viaIndices(bondLengths, 2)(P))
                 / _LENGTH_SCALE,
             )
         )
@@ -647,15 +683,17 @@ class _Problem:
         return jacobian
 
 
-def _closestAtoms(coordinates: np.ndarray) -> Tuple[int, int, float]:
-    """The two closest atoms and their distance"""
+def _closestAtoms(coordinates: np.ndarray, limits: np.ndarray) -> Tuple[int, int, float, float]:
+    """The two atoms that are closest to violating their minimum distance (the smallest distance minus limit), their
+    distance and the limit"""
     if len(coordinates) < 2:
-        return (0, 0, math.inf)
+        return (0, 0, math.inf, _MINIMUM_DISTANCE)
 
     distances = np.linalg.norm(coordinates[:, None] - coordinates[None], axis=2)
-    np.fill_diagonal(distances, np.inf)
-    i, j = np.unravel_index(np.argmin(distances), distances.shape)
-    return (int(i), int(j), float(distances[i, j]))
+    margins = distances - limits
+    np.fill_diagonal(margins, np.inf)
+    i, j = np.unravel_index(np.argmin(margins), margins.shape)
+    return (int(i), int(j), float(distances[i, j]), float(limits[i, j]))
 
 
 def _report(spec: StructureSpec, coordinates: np.ndarray) -> List[ParameterReport]:
@@ -965,8 +1003,9 @@ def buildStructure(
 
     If the parameters are not fulfilled after an attempt, the starting coordinates are randomly displaced (reproducibly,
     depending on the seed) and the optimization is repeated, up to maxAttempts times. The best result is returned and
-    BuildResult.converged tells whether all parameters are fulfilled and no two atoms are closer than 0.3 Angstrom (a
-    requirement that prevents atoms from being placed on top of each other).
+    BuildResult.converged tells whether all parameters are fulfilled and no two atoms are too close (0.6 Angstrom, and
+    0.75 times the sum of the covalent radii unless the distance of the pair is specified explicitly, directly or via
+    symmetry; this prevents atoms from being placed on top of each other).
 
     The geometry "planar" or "linear" (default: the one of the specification) restricts all atoms to a plane or a line. This
     is exact, it is not a penalty. A starting geometry is projected onto the plane/line. Note that dihedral angles are
@@ -999,9 +1038,10 @@ def buildStructure(
     nAtoms = spec.nAtoms()
     generators = _generators(spec, geometry) if spec.symmetry else []
     everything = np.eye(3 * nAtoms)
+    group = _closure(generators, nAtoms) if generators else []
+    exempt = _explicitPairs(spec, group)
 
     if generators:
-        group = _closure(generators, nAtoms)
         _checkSymmetry(spec, generators, group)
         basis = _symmetryBasis(group, nAtoms)
     else:
@@ -1027,15 +1067,15 @@ def buildStructure(
         if generators:
             # The default guess is not symmetric. Make it so by minimizing the deviation from the symmetry together with the
             # specified parameters before restricting the structure to the symmetric space
-            relaxed = _solve(_Problem(spec, start, generators), everything, start, False, True)
+            relaxed = _solve(_Problem(spec, start, generators, exempt), everything, start, False, True)
             start = (basis @ (basis.T @ relaxed.ravel())).reshape(-1, 3)
         elif geometry == "planar":
             # Rings can only be closed by choosing cis/trans torsions appropriately, which can't be done continuously in a
             # planar molecule. So first fulfill the parameters without restricting the guess to a plane (which twists rings
             # into shape) and use the result, projected onto its best-fit plane, as starting point
-            start = _flatten(_solve(_Problem(spec, start), everything, start, False), geometry)
+            start = _flatten(_solve(_Problem(spec, start, exempt=exempt), everything, start, False), geometry)
 
-    problem = _Problem(spec, start)
+    problem = _Problem(spec, start, exempt=exempt)
 
     rng = np.random.default_rng(seed)
     best: Optional[np.ndarray] = None
@@ -1053,7 +1093,9 @@ def buildStructure(
         full = _solve(problem, basis, x0, True)
         cost = float(np.sum(problem.residuals(full, restraints=False) ** 2))
         converged = all(r.isSatisfied() for r in _report(spec, full.reshape(-1, 3))) and (
-            _closestAtoms(full.reshape(-1, 3))[2] >= _MINIMUM_DISTANCE - _LENGTH_TOLERANCE
+            (lambda c: c[2] >= c[3] - _LENGTH_TOLERANCE)(
+                _closestAtoms(full.reshape(-1, 3), problem.minimumDistances)
+            )
         )
 
         if best is None or (converged, -cost) > (bestConverged, -bestCost):
@@ -1070,7 +1112,7 @@ def buildStructure(
     if orient:
         molecule.bringToStandardOrientation()
 
-    first, second, closest = _closestAtoms(molecule.coordinates())
+    first, second, closest, required = _closestAtoms(molecule.coordinates(), problem.minimumDistances)
 
     return BuildResult(
         molecule=molecule,
@@ -1080,4 +1122,5 @@ def buildStructure(
         parameters=_report(spec, molecule.coordinates()),
         closestAtoms=(spec.labels[first], spec.labels[second]),
         minimumDistance=closest,
+        requiredDistance=required,
     )

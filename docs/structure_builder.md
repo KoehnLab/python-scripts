@@ -73,6 +73,10 @@ The following requirements are always enforced:
 - **No two atoms come closer than 0.6 Angstrom.** This never matters for sensible structures but prevents atoms from lying on
   top of each other, which can satisfy parameters that do not determine the structure. It is weighted much more strongly than the
   parameters: if the parameters cannot be fulfilled together with it, the parameters give way and are reported as not satisfied.
+- **No two atoms come closer than 0.75 times the sum of their covalent radii** (e.g. 0.80 Angstrom for C-H). This does not apply
+  to a pair whose distance is specified explicitly, nor to pairs that are equivalent to it by the symmetry operations (only the
+  0.6 Angstrom limit applies there). The shortest ordinary bonds (triple bonds such as N-N, ratio about 0.78) stay above the
+  threshold. Bonds that are shorter, e.g. multiple bonds between metals such as Cr-Cr, have to be specified explicitly.
 - A weak repulsion keeps non-bonded atoms (and atoms bonded to a common neighbor) from coming too close to each other during the
   optimization.
 

@@ -78,6 +78,35 @@ class TestDefaultGuess(unittest.TestCase):
                 float(dihedralAngles(coords, [(0, 1, 2, 3)])[0]), math.radians(angle)
             )
 
+    def test_covalent_distance_is_waived_for_explicit_distances(self):
+        # Specified distances may be short (a quintuple Cr-Cr bond), the 0.75 limit only applies to the others
+        short = buildStructure(_parse("Cr1 - Cr2 1.7"))
+        self.assertTrue(short.converged, short.format())
+        self.assertAlmostEqual(short.minimumDistance, 1.7, places=6)
+
+        # Too short for the absolute limit: not honored
+        self.assertFalse(buildStructure(_parse("Cr1 - Cr2 0.5"), maxAttempts=1).converged)
+
+        # Unspecified: kept at 0.75 * (1.39 + 1.39) = 2.085 at least
+        guess = Molecule([Atom(Element.Cr, [0.0, 0.0, 0.0]), Atom(Element.Cr, [1.7, 0.0, 0.0])])
+        free = buildStructure(_parse("Cr1 - Cr2"), guess, ["Cr1", "Cr2"])
+        self.assertGreaterEqual(free.minimumDistance, 0.75 * 2 * 1.39 - 1e-4)
+
+    def test_explicit_distance_is_waived_for_symmetry_equivalent_pairs(self):
+        text = "Cr1 - Cr2 1.7\nCr2 - Cr3 1.7\n@symmetry C2(z): Cr1<->Cr3, Cr2\n"
+        result = buildStructure(_parse(text))
+        self.assertTrue(result.converged, result.format())
+        distances = np.linalg.norm(
+            result.molecule.coordinates()[:, None] - result.molecule.coordinates()[None], axis=2
+        )
+        assert_almost_equal([distances[0, 1], distances[1, 2]], [1.7, 1.7], decimal=6)
+
+        # Only one of the two equivalent bonds is given: the other one is waived as well
+        result = buildStructure(_parse("Cr1 - Cr2 1.7\nCr2 - Cr3\n@symmetry C2(z): Cr1<->Cr3, Cr2\n"))
+        self.assertTrue(result.converged, result.format())
+        coordinates = result.molecule.coordinates()
+        assert_almost_equal(np.linalg.norm(coordinates[[0, 2]] - coordinates[1], axis=1), [1.7, 1.7], decimal=5)
+
     def test_water(self):
         spec = _parse("O1 - H1 0.96\nO1 - H2 0.97\nH1 - O1 - H2 104.5")
         coords = defaultGuess(spec)
@@ -280,11 +309,12 @@ class TestBuildStructure(unittest.TestCase):
         self.assertTrue(single.converged)
         self.assertNotIn("closest atoms", single.format())
 
-    def test_atoms_never_get_closer_than_0_3_angstrom(self):
+    def test_atoms_never_get_closer_than_the_minimum_distance(self):
         # 5 degrees between two bonds of 1.4 Angstrom would put the outer atoms 0.12 Angstrom apart
         result = buildStructure(_parse("C1 - C2 1.4\nC2 - C3 1.4\nC1 - C2 - C3 5"), maxAttempts=2)
         self.assertFalse(result.converged)
-        self.assertGreaterEqual(result.minimumDistance, 0.3 - 1e-4)
+        # C1 and C3 are not bonded and have no explicit distance: 0.75 times the sum of the covalent radii
+        self.assertGreaterEqual(result.minimumDistance, 0.75 * 2 * 0.76 - 1e-4)
 
         # Atoms of a starting geometry that lie on top of each other are pushed apart (to the minimum distance)
         guess = Molecule(
@@ -296,7 +326,7 @@ class TestBuildStructure(unittest.TestCase):
         )
         result = buildStructure(_parse("C1 - C2 1.5\nC2 - C3 1.5"), guess, ["C1", "C2", "C3"])
         self.assertTrue(result.converged, result.format())
-        self.assertAlmostEqual(result.minimumDistance, 0.3, places=6)
+        self.assertAlmostEqual(result.minimumDistance, 0.75 * 2 * 0.76, places=6)
 
         # No effect on sensible structures: the requirement only contributes residuals if it is violated
         chain = _parse("C1 - C2 1.5\nC2 - C3 1.5")
