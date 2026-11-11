@@ -135,13 +135,13 @@ def parseSymmetryOperation(text: str) -> np.ndarray:
     return rotation if kind[0] == "C" else reflectionMatrix(axis) @ rotation
 
 
-def parseStructureSpec(path: str) -> StructureSpec:
+def parseStructureSpec(path: str, geometry: Optional[str] = None) -> StructureSpec:
     """Reads a structure specification from the given file. See parseStructureSpecString for the format"""
     with open(path, "r") as inputFile:
-        return parseStructureSpecString(inputFile.read(), path)
+        return parseStructureSpecString(inputFile.read(), path, geometry)
 
 
-def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSpec:
+def parseStructureSpecString(text: str, source: str = "<string>", geometry: Optional[str] = None) -> StructureSpec:
     """Parses a structure specification: One parameter per line, atoms are identified by labels consisting of an element
     symbol and a number (e.g. C1 or Cl2). Text after a '#' is ignored. The number of labels determines the type:
 
@@ -166,11 +166,15 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     moves to C1). A single label stands for an atom that stays where it is
     ('@symmetry sigma(y): H1, ...').
 
-    The line '@group C2v' adds the generators of the point group (in a canonical frame that is rotated to fit the other operations, see adaptedPointGroupGenerators) as operations
-    whose atoms are inferred. The atoms of such an operation can be given by a '@symmetry' line with the same operation (it
+    The line '@group C2v' adds the generators of the point group (in a canonical frame that is rotated to fit the other operations
+    and the mirror plane of a planar molecule, see adaptedPointGroupGenerators) as operations whose atoms are inferred. The atoms of such an operation can be given by a '@symmetry' line with the same operation (it
     is then treated as incomplete list).
+
+    The geometry ('planar' or 'linear') can also be given as an argument, which is the same as the directive.
     """
-    spec = StructureSpec()
+    if geometry is not None and geometry not in GEOMETRIES.values():
+        raise ValueError("Unknown geometry '%s' (expected one of: %s)" % (geometry, ", ".join(GEOMETRIES.values())))
+    spec = StructureSpec(geometry=geometry or "general")
     labelIndex: Dict[str, int] = {}
     seen: Dict[Tuple[int, ...], Tuple[float, int]] = {}
 
@@ -361,6 +365,9 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     # explicitly for an operation with the same matrix
     # The frame of the group adapts to the operations the user gave (C2(x) in C2v makes x the principal axis)
     userOperations = [op.matrix for op in spec.symmetry]
+    if spec.geometry == "planar":
+        # The mirror plane of the molecule is the xy plane and must be an operation of the group
+        userOperations.append(np.diag([1.0, 1.0, -1.0]))
     for groupName in spec.groups:
         for name, matrix in adaptedPointGroupGenerators(groupName, userOperations):
             existing = [op for op in spec.symmetry if np.allclose(op.matrix, matrix, atol=1e-8)]

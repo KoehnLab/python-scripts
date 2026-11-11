@@ -285,6 +285,8 @@ for the same molecule: it is rotated (by permuting the axes) such that all of yo
 example, with `@group C2v` and `@symmetry C2(x): H1<->H2, ...`, the principal axis becomes x. If several orientations fit (here, which
 of the two mirror planes is `sigma(y)`), the one that moves the fewest axes is used; give one more operation to choose. Without
 any `@symmetry` line, or if no axis permutation fits, the canonical frame is used, and the molecule or starting geometry has to be in it.
+A planar molecule (`@planar` or `--planar`) lies in the xy plane, so the frame is also rotated such that the xy plane is a mirror plane of the group:
+with `@group C2v` and `@planar`, the C2 axis lies in the plane (x or y).
 
  Oh |
 | `I`, `Ih` | `C2(z)`, `C3(1,1,1)`, `C5(0,1,phi)` (phi: golden ratio), plus `i` for Ih |

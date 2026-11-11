@@ -233,6 +233,24 @@ class TestStructureParser(unittest.TestCase):
         self.assertEqual(len(spec.symmetry), 1)
         assert_almost_equal(spec.symmetry[0].matrix, parseSymmetryOperation("sigma(x)"))
 
+    def test_group_frame_of_planar_molecule(self):
+        # The molecular plane (xy) has to be a mirror plane of the group, so the C2 axis of a planar C2v molecule lies in the plane
+        base = "O1 - H1 0.96\nO1 - H2 0.96\nH1 - O1 - H2 104.5\n@group C2v\n"
+        for spec in (
+            parseStructureSpecString("@planar\n" + base),
+            parseStructureSpecString(base, geometry="planar"),
+        ):
+            names = [op.name for op in spec.symmetry]
+            self.assertEqual(spec.geometry, "planar")
+            self.assertIn(names[0], ("C2(x)", "C2(y)"))
+            self.assertNotIn("C2(z)", names)
+
+        # without planarity the canonical frame is kept
+        self.assertEqual([op.name for op in parseStructureSpecString(base).symmetry], ["C2(z)", "sigma(y)"])
+
+        with self.assertRaises(ValueError):
+            parseStructureSpecString(base, geometry="cubic")
+
 
 if __name__ == "__main__":
     unittest.main()

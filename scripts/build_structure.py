@@ -122,7 +122,8 @@ def main(argv: Optional[list] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        spec = parseStructureSpec(args.input)
+        geometry = "planar" if args.planar else "linear" if args.linear else None
+        spec = parseStructureSpec(args.input, geometry)
 
         guess = None
         guessLabels = None
@@ -136,7 +137,7 @@ def main(argv: Optional[list] = None) -> int:
             orient=not args.no_orient,
             maxAttempts=args.max_attempts,
             seed=args.seed,
-            geometry="planar" if args.planar else "linear" if args.linear else None,
+            geometry=geometry,
         )
     except (StructureSpecError, ValueError, OSError, RuntimeError) as error:
         print("Error: %s" % error, file=sys.stderr)
