@@ -44,7 +44,7 @@ parameter                          target     achieved    deviation
 O1 - H1                          0.960000     0.960000    -1.11e-16
 O1 - H2                          0.960000     0.960000    -1.11e-16
 H1 - O1 - H2                   104.500000   104.500000     0.00e+00
-closest atoms: O1 - H1             > 0.30     0.960000
+closest atoms: O1 - H1             > 0.60     0.960000
 ```
 
 
@@ -70,7 +70,7 @@ This has a few consequences:
 
 The following requirements are always enforced:
 
-- **No two atoms come closer than 0.3 Angstrom.** This never matters for sensible structures but prevents atoms from lying on
+- **No two atoms come closer than 0.6 Angstrom.** This never matters for sensible structures but prevents atoms from lying on
   top of each other, which can satisfy parameters that do not determine the structure. It is weighted much more strongly than the
   parameters: if the parameters cannot be fulfilled together with it, the parameters give way and are reported as not satisfied.
 - A weak repulsion keeps non-bonded atoms (and atoms bonded to a common neighbor) from coming too close to each other during the
@@ -467,7 +467,7 @@ Further building blocks, which can be used on their own:
 | `... are equivalent by symmetry but have different values` | the same parameter was given with different values for symmetry-equivalent atoms |
 | `Dihedral angle ... is not possible in a planar molecule` | only 0 and 180 degrees are possible with `@planar` |
 | exit code 1, `<-- not satisfied` in the table | the parameters are inconsistent (or the build ended in a bad local solution). Check the listed parameters, try another `--seed` or more `--max-attempts`, or provide a starting geometry |
-| `<-- too close` | the parameters would put two atoms closer than 0.3 Angstrom |
+| `<-- too close` | the parameters would put two atoms closer than 0.6 Angstrom |
 | warning `The starting geometry is far from planar` / `deviates from the symmetry` | the starting geometry is projected onto the plane or the symmetric structures; check that it is given in the right frame (symmetry elements through the origin) |
 
 If a structure converges but looks wrong, the parameters probably do not determine it: other solutions (folded rings, flipped

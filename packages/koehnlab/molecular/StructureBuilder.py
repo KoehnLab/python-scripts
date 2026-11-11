@@ -299,7 +299,7 @@ _CLASH_FACTOR_1_3 = 0.9
 
 # No two atoms may come closer than this distance (Angstrom). This never matters for sensible structures, but prevents atoms from
 # lying on top of each other, which can satisfy parameters that are not sufficient to determine the structure
-_MINIMUM_DISTANCE = 0.3
+_MINIMUM_DISTANCE = 0.6
 # Weight of this requirement relative to the specified parameters: If parameters are impossible to fulfill together, the
 # parameters give way and not the minimum distance
 _MINIMUM_DISTANCE_WEIGHT = 100.0
