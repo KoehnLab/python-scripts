@@ -13,6 +13,7 @@ may be incomplete.
 - [Output and orientation](#output-and-orientation)
 - [Command line reference](#command-line-reference)
 - [Python API](#python-api)
+- [Writing parameter files with an LLM](#writing-parameter-files-with-an-llm)
 - [Troubleshooting](#troubleshooting)
 - [Limitations](#limitations)
 
@@ -487,6 +488,40 @@ Further building blocks, which can be used on their own:
 | `pointGroupGenerators(name)` | generators (name and matrix) of a point group in the canonical frame |
 | `adaptedPointGroupGenerators(name, matrices)` | the same, in the frame (axis permutation) in which the given operations belong to the group |
 | `Molecule.bringToStandardOrientation(center="geometric")` | the orientation described [above](#output-and-orientation) |
+
+
+## Writing parameter files with an LLM
+
+Structure parameters in publications are usually given as tables of bond lengths and angles. A language model can turn such a table
+into a parameter file. Paste the prompt below, followed by the table (and the molecule's point group and atom numbering, if the
+source states them), into the model's request, then check the result with `build_structure.py --verbose`.
+
+```text
+Write an input file for a molecular structure builder from the parameters below. Output only the file content.
+
+Records, one per line (`#` comment):
+  C1 - C2 1.34            bond, Angstrom
+  C1 - H1                 bond without value
+  C1 - C2 - C3 123.5      angle, degrees, middle atom = apex
+  C1 - C2 - C3 - C4 180   dihedral, degrees
+Labels: element symbol + number, unique. Write a 2-label bond record for EVERY bond of the whole molecule (all X-H, ring closures, and every symmetry-equivalent bond, even when the table lists it only once): symmetry never creates bonds. Each parameter once. Only 2-label bond records may omit the value: every angle (3 labels) and dihedral (4 labels) line MUST have a value from the source, so never list an angle or dihedral just to state connectivity or equivalence (the bond records and `@group` do that); leave out angles and dihedrals that the source does not give.
+Use ONLY values explicitly given in the source (convert units only). Never invent, estimate or derive any length, angle or dihedral, not even from geometry or symmetry or from other values (e.g. 90, 109.47, 120, 180, 0, or an angle implied by the others): leave it out, the builder fills in crude defaults. Only connectivity (valueless bond records) and symmetry may be inferred from the molecule. Write each given value once, for every symmetry-inequivalent parameter that the source lists.
+`@planar`: all atoms in one plane. `@linear`: chain on a line.
+
+Symmetry: if the point group is known, add one line `@group <name>` (Cs, Ci, Cn, Cnv, Cnh, Dn, Dnh, Dnd, S2n, T, Td, Th, O, Oh, I, Ih; n is a number, e.g. C2v, D3h, D6h, Td, Oh). The builder derives the symmetry operations and how they move the atoms from the bonds, so write no other symmetry lines. Parameters of symmetry-equivalent atoms need to be given only once, but the labels must be consistent with the parameters (e.g. if F1 - S1 - F2 is 180, F1 and F2 are opposite).
+```
+
+Notes:
+
+- The prompt tells the model to use **only values that the source states**. Missing parameters are left to the builder's
+  [defaults](#the-default-starting-geometry), which are crude (hydrogen positions in particular); if the result is poor, supply
+  the missing values yourself or a [starting geometry](#starting-geometry).
+- The prompt lets the model state the point group with `@group` only: the builder infers how the operations move the atoms from the
+  bonds (see [Inferring missing atoms](#inferring-missing-atoms)), so the model does not have to work out frames, axes and
+  permutations, which is where it makes mistakes. Give the point group only if the source states it.
+- Always check the output: the builder reports bonds that the symmetry does not map onto bonds, ambiguous operations and parameters
+  that are not fulfilled (an over-determined table that was rounded can show deviations of a few hundredths of a degree).
+- The atom labels in the generated file are the model's choice, so compare them with the numbering of the source.
 
 
 ## Troubleshooting
