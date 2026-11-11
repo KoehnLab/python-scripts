@@ -123,8 +123,13 @@ class TestBuildStructureScript(unittest.TestCase):
         ]
         assert_almost_equal(distances, [0.96, 0.96], decimal=6)
 
-        # Without a geometry, the mirror plane is ambiguous
-        code, err = self.run_script("-i", spec, "-o", output)
+        # Without a geometry, the operations of the group are still consistent with the bonds only in one way (up to the
+        # orientation of the molecule)
+        self.assertEqual(self.run_script("-i", spec, "-o", output)[0], 0)
+
+        # A single mirror plane is ambiguous
+        single = self.write("single.txt", "O1 - H1 0.96\nO1 - H2\nH1 - O1 - H2 104.5\n@symmetry sigma(y): ...\n")
+        code, err = self.run_script("-i", single, "-o", output)
         self.assertEqual(code, 2)
         self.assertIn("ambiguous", err)
 

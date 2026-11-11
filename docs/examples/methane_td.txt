@@ -1,0 +1,7 @@
+# Methane, Td: the point group alone determines how the symmetry operations move the hydrogens
+C1 - H1 1.087
+C1 - H2
+C1 - H3
+C1 - H4
+H1 - C1 - H2 109.4712206
+@group Td

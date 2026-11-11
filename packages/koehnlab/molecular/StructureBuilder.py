@@ -25,7 +25,7 @@ from .InternalCoordinates import (
     wrapAngle,
 )
 from .Molecule import Molecule
-from .SymmetryInference import completeSymmetry
+from .SymmetryInference import describeAmbiguity, symmetryAlternatives
 from .StructureParser import (
     Constraint,
     StructureSpec,
@@ -1042,9 +1042,63 @@ def buildStructure(
     if guess is not None:
         spec = resolveSpec(spec, guess, guessLabels)
 
-    # Operations with missing atoms are completed with the help of the bonds (and the starting geometry)
-    spec = completeSymmetry(spec, guess.coordinates() if guess is not None else None)
+    # Operations with missing atoms are completed with the help of the bonds (and the starting geometry). If that is not
+    # unique, the possibilities are tried one after the other and the first one that fulfills the parameters is used
+    alternatives = symmetryAlternatives(spec, guess.coordinates() if guess is not None else None, geometry)
+    if len(alternatives) == 1:
+        return _buildCompleted(alternatives[0], guess, orient, maxAttempts, seed, geometry)
 
+    # A quick attempt for each possibility is enough to find those that fulfill the parameters. Only if there is none, the
+    # optimization is repeated with all attempts
+    results: List[BuildResult] = []
+    firstError: Optional[StructureSpecError] = None
+    for attempts in sorted({1, maxAttempts}):
+        results = []
+        for alternative in alternatives:
+            try:
+                results.append(_buildCompleted(alternative, guess, orient, attempts, seed, geometry))
+            except StructureSpecError as error:
+                firstError = firstError or error
+        if any(result.converged for result in results):
+            break
+
+    if not results:
+        assert firstError is not None
+        raise firstError
+
+    converged = [result for result in results if result.converged]
+    if not converged:
+        return min(results, key=lambda r: sum(p.deviation**2 for p in r.parameters))
+
+    # Possibilities that give the same structure are not ambiguous
+    distances = [_distanceMatrix(result) for result in converged]
+    if any(np.max(np.abs(d - distances[0])) > _AMBIGUITY_TOLERANCE for d in distances[1:]):
+        raise StructureSpecError(
+            describeAmbiguity(spec, alternatives, guess.coordinates() if guess is not None else None)
+            + " (several of them fulfill all parameters)"
+        )
+
+    return converged[0]
+
+
+# Largest difference of an interatomic distance (Angstrom) for two structures to count as the same
+_AMBIGUITY_TOLERANCE = 1e-3
+
+
+def _distanceMatrix(result: BuildResult) -> np.ndarray:
+    coordinates = result.molecule.coordinates()
+    return np.linalg.norm(coordinates[:, None] - coordinates[None, :], axis=2)
+
+
+def _buildCompleted(
+    spec: StructureSpec,
+    guess: Optional[Molecule],
+    orient: bool,
+    maxAttempts: int,
+    seed: int,
+    geometry: str,
+) -> BuildResult:
+    """buildStructure for a specification whose symmetry operations are complete"""
     nAtoms = spec.nAtoms()
     generators = _generators(spec, geometry) if spec.symmetry else []
     everything = np.eye(3 * nAtoms)

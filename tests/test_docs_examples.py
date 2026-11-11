@@ -85,6 +85,20 @@ class TestDocsExamples(unittest.TestCase):
             self.assertAlmostEqual(self.distance(molecule, labels, "C2", hydrogen), 1.09, places=6)
         self.assertAlmostEqual(self.distance(molecule, labels, "C1", "C2"), 1.53, places=6)
 
+    def test_methane(self):
+        molecule, labels = self.build("methane_td")
+        for hydrogen in ("H1", "H2", "H3", "H4"):
+            self.assertAlmostEqual(self.distance(molecule, labels, "C1", hydrogen), 1.087, places=6)
+        self.assertAlmostEqual(
+            self.distance(molecule, labels, "H1", "H2"), self.distance(molecule, labels, "H3", "H4"), places=6
+        )
+
+    def test_sf6(self):
+        molecule, labels = self.build("sf6_oh")
+        self.assertAlmostEqual(self.distance(molecule, labels, "F1", "F2"), 2 * 1.564, places=6)
+        self.assertAlmostEqual(self.distance(molecule, labels, "F1", "F3"), 1.564 * 2**0.5, places=6)
+
 
 if __name__ == "__main__":
     unittest.main()
+

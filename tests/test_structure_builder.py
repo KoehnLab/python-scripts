@@ -738,12 +738,54 @@ class TestSymmetryInference(unittest.TestCase):
         self.assertAlmostEqual(float(np.linalg.norm(h2 - o)), 0.96, places=6)
 
     def test_ambiguity_is_reported(self):
-        # Without further information, the mirror plane could exchange the hydrogens or leave them in place
+        # A single mirror plane could exchange the hydrogens or leave them in place, and both structures fulfill the parameters
+        text = "O1 - H1 0.96\nO1 - H2\nH1 - O1 - H2 104.5\n@symmetry sigma(y): ...\n"
         with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
-            buildStructure(_parse(WATER_PARTIAL + "@symmetry C2(z): H1<->H2\n"))
+            buildStructure(_parse(text))
 
-        with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
-            buildStructure(_parse(WATER_PARTIAL))
+        # Specifying the atoms resolves it
+        self.assertTrue(buildStructure(_parse(text.replace("...", "H1<->H2"))).converged)
+
+    def test_point_group_without_atoms(self):
+        # The operations of a point group are consistent with each other, which determines the atoms (up to equivalent choices),
+        # the orientation of the molecule in the frame of the group is free
+        for text in (WATER_PARTIAL, WATER_PARTIAL + "@symmetry C2(z): H1<->H2\n"):
+            result = buildStructure(_parse(text))
+            self.assertTrue(result.converged)
+            coords = result.molecule.coordinates()
+            self.assertAlmostEqual(float(np.linalg.norm(coords[2] - coords[0])), 0.96, places=6)
+
+    def test_high_symmetry_groups(self):
+        methane = "C1 - H1 1.087\nC1 - H2\nC1 - H3\nC1 - H4\nH1 - C1 - H2 109.4712206\n@group Td\n"
+        result = buildStructure(_parse(methane))
+        self.assertTrue(result.converged, result.format())
+        coords = result.molecule.coordinates()
+        for i in range(1, 5):
+            self.assertAlmostEqual(float(np.linalg.norm(coords[i] - coords[0])), 1.087, places=6)
+
+        # The parameters tell which fluorines are opposite to each other: the symmetry alone could not
+        sf6 = "\n".join(
+            ["S1 - F%d%s" % (i, " 1.564" if i == 1 else "") for i in range(1, 7)]
+            + ["F1 - S1 - F3 90", "F1 - S1 - F2 180", "@group Oh", ""]
+        )
+        result = buildStructure(_parse(sf6))
+        self.assertTrue(result.converged, result.format())
+        xyz = dict(zip(result.labels, result.molecule.coordinates()))
+        self.assertAlmostEqual(float(np.linalg.norm(xyz["F1"] - xyz["F2"])), 2 * 1.564, places=6)
+        self.assertAlmostEqual(float(np.linalg.norm(xyz["F1"] - xyz["F3"])), 1.564 * math.sqrt(2), places=6)
+
+        benzene = (
+            "@planar\n"
+            + "".join("C%d - C%d%s\n" % (i, i % 6 + 1, " 1.397" if i == 1 else "") for i in range(1, 7))
+            + "".join("C%d - H%d%s\n" % (i, i, " 1.084" if i == 1 else "") for i in range(1, 7))
+            + "@group D6h\n"
+        )
+        result = buildStructure(_parse(benzene))
+        self.assertTrue(result.converged, result.format())
+        xyz = dict(zip(result.labels, result.molecule.coordinates()))
+        for i in range(1, 7):
+            self.assertAlmostEqual(float(np.linalg.norm(xyz["C%d" % i] - xyz["C%d" % (i % 6 + 1)])), 1.397, places=6)
+            self.assertAlmostEqual(float(np.linalg.norm(xyz["C%d" % i] - xyz["H%d" % i])), 1.084, places=6)
 
     def test_inconsistent_operations(self):
         # C3 and S4 of a tetrahedron have to permute the hydrogens consistently
@@ -777,10 +819,9 @@ class TestSymmetryInference(unittest.TestCase):
         result = buildStructure(_parse(text))
         self.assertTrue(result.converged)
 
-        # An exchange of two hydrogens is compatible with a mirror plane but a fixed H1 does not tell what happens to the others
-        ambiguous = AMMONIA_C3V.replace("sigma(y): H2<->H3", "sigma(y): H1, ...")
-        with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
-            buildStructure(_parse(ambiguous))
+        # A fixed H1 does not tell what happens to the others, but the mirror plane has to be consistent with the rotation
+        fixed = AMMONIA_C3V.replace("sigma(y): H2<->H3", "sigma(y): H1, ...")
+        self.assertTrue(buildStructure(_parse(fixed)).converged)
 
     def test_inconsistent_anchors(self):
         with self.assertRaisesRegex(StructureSpecError, "different element"):
@@ -811,9 +852,15 @@ class TestSymmetryInference(unittest.TestCase):
         for dihedral in dihedralAngles(coords, [(index["H1"], 0, 1, index["H4"]), (index["H1"], 0, 1, index["H5"])]):
             self.assertAlmostEqual(_distanceToMultiple(math.degrees(float(dihedral)), 60), 0, places=4)
 
-        # Without a geometry the mapping of the hydrogens is not determined by the graph
-        with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
-            buildStructure(_parse("C1 - C2 1.53\nC1 - H1 1.09\nC1 - H2\nC1 - H3\nC2 - H4\nC2 - H5\nC2 - H6\n@group D3d"))
+        # Without a geometry, the mapping of the hydrogens is determined up to equivalent choices
+        result = buildStructure(
+            _parse("C1 - C2 1.53\nC1 - H1 1.09\nC1 - H2\nC1 - H3\nC2 - H4\nC2 - H5\nC2 - H6\nH1 - C1 - C2 111\n@group D3d")
+        )
+        self.assertTrue(result.converged, result.format())
+        coords = result.molecule.coordinates()
+        index = {label: i for i, label in enumerate(result.labels)}
+        for dihedral in dihedralAngles(coords, [(index["H1"], 0, 1, index["H4"]), (index["H1"], 0, 1, index["H5"])]):
+            self.assertAlmostEqual(_distanceToMultiple(math.degrees(float(dihedral)), 60), 0, places=4)
 
 
 # Benzyne (planar, C2v): C1 and C2 are the dehydro carbons. The molecular plane is the xy plane, the C2 axis (through the middle of
