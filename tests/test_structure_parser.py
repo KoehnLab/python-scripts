@@ -216,5 +216,23 @@ class TestStructureParser(unittest.TestCase):
             parseStructureSpecString("C1 - C2 1.0\n\nC1 - C3 abc", "mine.txt")
 
 
+    def test_group_frame_adapts_to_given_operation(self):
+        base = "O1 - H1 0.96\nO1 - H2 0.96\nH1 - O1 - H2 104.5\n@group C2v\n"
+        for axis in "xyz":
+            spec = parseStructureSpecString(base + "@symmetry C2(%s): H1<->H2, ...\n" % axis)
+            self.assertEqual(len(spec.symmetry), 2)
+            assert_almost_equal(spec.symmetry[0].matrix, parseSymmetryOperation("C2(%s)" % axis))
+            self.assertEqual(spec.symmetry[0].name, "C2(%s)" % axis)
+
+    def test_group_frame_is_canonical_without_operations(self):
+        spec = parseStructureSpecString("O1 - H1 0.96\nO1 - H2 0.96\nH1 - O1 - H2 104.5\n@group C2v\n")
+        self.assertEqual([op.name for op in spec.symmetry], ["C2(z)", "sigma(y)"])
+
+    def test_group_frame_adapts_to_mirror_plane(self):
+        spec = parseStructureSpecString("O1 - H1 0.96\nO1 - H2 0.96\nH1 - O1 - H2 104.5\n@group Cs\n@symmetry sigma(x): O1, H1, H2\n")
+        self.assertEqual(len(spec.symmetry), 1)
+        assert_almost_equal(spec.symmetry[0].matrix, parseSymmetryOperation("sigma(x)"))
+
+
 if __name__ == "__main__":
     unittest.main()

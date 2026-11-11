@@ -1,5 +1,6 @@
 from typing import Callable, Dict, List, Tuple
 
+import itertools
 import math
 import re
 
@@ -105,3 +106,65 @@ def pointGroupGenerators(name: str) -> List[Generator]:
     raise ValueError(
         "Unknown point group '%s' (supported: Cs, Ci, Cn, Cnv, Cnh, Dn, Dnh, Dnd, S2n, T, Td, Th, O, Oh, I, Ih)" % name
     )
+
+
+def _matrixKey(matrix: np.ndarray) -> Tuple[float, ...]:
+    return tuple((np.round(matrix, 6) + 0.0).ravel().tolist())
+
+
+def _elements(generators: List[Generator]) -> set:
+    """Keys of all matrices that can be obtained by combining the generators"""
+    found = {_matrixKey(np.eye(3)): np.eye(3)}
+    queue = [np.eye(3)]
+    while queue:
+        current = queue.pop()
+        for _, generator in generators:
+            product = generator @ current
+            key = _matrixKey(product)
+            if key not in found:
+                found[key] = product
+                queue.append(product)
+    return set(found)
+
+
+def _axisFrames() -> List[np.ndarray]:
+    """All proper rotations that map the Cartesian axes onto the Cartesian axes (possibly with a sign), the ones that move
+    the fewest axes first"""
+    frames = []
+    for permutation in itertools.permutations(range(3)):
+        for signs in itertools.product((1.0, -1.0), repeat=3):
+            frame = np.zeros((3, 3))
+            for column, row in enumerate(permutation):
+                frame[row, column] = signs[column]
+            if np.linalg.det(frame) > 0:
+                frames.append(frame)
+
+    return sorted(frames, key=lambda frame: (3 - int(np.sum(np.diag(frame) > 0.5)), -int(np.sum(np.diag(frame)))))
+
+
+def _relabel(name: str, frame: np.ndarray) -> str:
+    """Name of a canonical operation after the frame is applied (x, y, z axes only)"""
+    match = re.fullmatch(r"(.*)\(([xyz])\)", name)
+    if match is None:
+        return name
+    image = frame[:, "xyz".index(match.group(2))]
+    return "%s(%s)" % (match.group(1), "xyz"[int(np.argmax(np.abs(image)))])
+
+
+def adaptedPointGroupGenerators(name: str, operations: List[np.ndarray]) -> List[Generator]:
+    """Like pointGroupGenerators, but the canonical frame is rotated (by a permutation of the axes) such that all the given
+    operation matrices are elements of the group. For example, for C2v with the operation C2(x) the principal axis becomes x.
+    If there is no such frame (or no operation is given), the canonical frame is used. If several frames are possible, the
+    one that moves the fewest axes is used."""
+    generators = pointGroupGenerators(name)
+    nontrivial = [m for m in operations if not np.allclose(m, np.eye(3), atol=1e-8)]
+    if not nontrivial:
+        return generators
+
+    for frame in _axisFrames():
+        rotated = [(_relabel(label, frame), frame @ matrix @ frame.T) for label, matrix in generators]
+        elements = _elements(rotated)
+        if all(_matrixKey(m) in elements for m in nontrivial):
+            return rotated
+
+    return generators

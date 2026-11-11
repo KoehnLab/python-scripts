@@ -279,15 +279,14 @@ has the opposite value).
 | --- | --- |
 | `Cs` | `sigma(z)` |
 | `Ci` | `i` |
-| `Cn` | `Cn(z)` |
-| `Cnv` | `Cn(z)`, `sigma(y)` |
-| `Cnh` | `Cn(z)`, `sigma(z)` |
-| `Dn` | `Cn(z)`, `C2(x)` |
-| `Dnh` | `Cn(z)`, `C2(x)`, `sigma(z)` |
-| `Dnd` | `Cn(z)`, `C2(x)`, a mirror plane containing z that bisects two neighboring C2 axes |
-| `S2n` (`S4`, `S6`, ...) | `S2n(z)` |
-| `T`, `Td`, `Th` | `C2(z)`, `C3(1,1,1)`, plus `sigma(1,-1,0)` for Td and `i` for Th |
-| `O`, `Oh` | `C4(z)`, `C3(1,1,1)`, plus `i` for Oh |
+| `Cn` | `Cn(z)(n is a number.) The table lists the canonical frame: the principal axis along z, the perpendicular C2 axes along x, the vertical
+mirror plane `sigma(y)` in the xz plane and the horizontal one in the xy plane. The frame adapts to the `@symmetry` lines you give
+for the same molecule: it is rotated (by permuting the axes) such that all of your operations are elements of the group. For
+example, with `@group C2v` and `@symmetry C2(x): H1<->H2, ...`, the principal axis becomes x. If several orientations fit (here, which
+of the two mirror planes is `sigma(y)`), the one that moves the fewest axes is used; give one more operation to choose. Without
+any `@symmetry` line, or if no axis permutation fits, the canonical frame is used, and the molecule or starting geometry has to be in it.
+
+ Oh |
 | `I`, `Ih` | `C2(z)`, `C3(1,1,1)`, `C5(0,1,phi)` (phi: golden ratio), plus `i` for Ih |
 
 (n is a number.) The canonical frame has the principal axis along z, the perpendicular C2 axes along x, the vertical mirror plane
@@ -456,6 +455,7 @@ Further building blocks, which can be used on their own:
 | `defaultGuess(spec, geometry=None)` | the rough geometry generated from the connectivity |
 | `koehnlab.molecular.InternalCoordinates` | bond lengths, angles and dihedral angles of coordinates (`bondLengths`, `bondAngles`, `dihedralAngles`) |
 | `pointGroupGenerators(name)` | generators (name and matrix) of a point group in the canonical frame |
+| `adaptedPointGroupGenerators(name, matrices)` | the same, in the frame (axis permutation) in which the given operations belong to the group |
 | `Molecule.bringToStandardOrientation(center="geometric")` | the orientation described [above](#output-and-orientation) |
 
 
@@ -488,4 +488,4 @@ faster single-threaded for small matrices).
 - The default starting geometry only knows the number of bonds of an atom, not hybridization or lone pairs.
 - In planar molecules, cis/trans is a discrete property that the optimization cannot change; unrealized dihedral angles are reported.
 - Default bond lengths and the detection of bonds in a starting geometry use the covalent radii of ASE, which are meaningful up to curium (Z = 96).
-- Symmetry operations are given by the user (the `@group` frame is canonical); the symmetry of a molecule is not detected automatically.
+- Symmetry operations are given by the user (the `@group` frame is canonical unless your `@symmetry` lines imply another one); the symmetry of a molecule is not detected automatically.

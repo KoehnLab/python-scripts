@@ -8,7 +8,7 @@ import re
 import numpy as np
 
 from .Element import Element
-from .PointGroups import pointGroupGenerators, reflectionMatrix, rotationMatrix
+from .PointGroups import adaptedPointGroupGenerators, pointGroupGenerators, reflectionMatrix, rotationMatrix
 from .InternalCoordinates import (
     canonicalAngle,
     canonicalBond,
@@ -166,7 +166,7 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
     moves to C1). A single label stands for an atom that stays where it is
     ('@symmetry sigma(y): H1, ...').
 
-    The line '@group C2v' adds the generators of the point group (in a canonical frame, see pointGroupGenerators) as operations
+    The line '@group C2v' adds the generators of the point group (in a canonical frame that is rotated to fit the other operations, see adaptedPointGroupGenerators) as operations
     whose atoms are inferred. The atoms of such an operation can be given by a '@symmetry' line with the same operation (it
     is then treated as incomplete list).
     """
@@ -359,8 +359,10 @@ def parseStructureSpecString(text: str, source: str = "<string>") -> StructureSp
 
     # The generators of point groups are operations, whose atoms have to be inferred, except for those atoms the user gave
     # explicitly for an operation with the same matrix
+    # The frame of the group adapts to the operations the user gave (C2(x) in C2v makes x the principal axis)
+    userOperations = [op.matrix for op in spec.symmetry]
     for groupName in spec.groups:
-        for name, matrix in pointGroupGenerators(groupName):
+        for name, matrix in adaptedPointGroupGenerators(groupName, userOperations):
             existing = [op for op in spec.symmetry if np.allclose(op.matrix, matrix, atol=1e-8)]
             if existing:
                 for operation in existing:
