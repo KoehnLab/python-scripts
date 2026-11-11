@@ -329,14 +329,14 @@ def parseStructureSpecString(text: str, source: str = "<string>", geometry: Opti
             key: Tuple[int, ...] = canonicalBond(*indices)
         elif len(indices) == 3:
             if value is None:
-                raise fail(lineNumber, "Missing value for the angle")
+                raise fail(lineNumber, "Missing value for the angle (only bond records, i.e. lines with two atoms, may omit the value)")
             if not 0 <= value <= 180:
                 raise fail(lineNumber, "Angles must be between 0 and 180 degrees")
             value = math.radians(value)
             key = canonicalAngle(*indices)
         else:
             if value is None:
-                raise fail(lineNumber, "Missing value for the dihedral angle")
+                raise fail(lineNumber, "Missing value for the dihedral angle (only bond records, i.e. lines with two atoms, may omit the value)")
             value = float(wrapAngle(math.radians(value)))
             key = canonicalDihedral(*indices)
 

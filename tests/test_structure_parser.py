@@ -138,6 +138,11 @@ class TestStructureParser(unittest.TestCase):
         with self.assertRaisesRegex(StructureSpecError, r":2:"):
             parseStructureSpecString("C1 - C2 1.0\n@symmetry C2(q): C1<->C2")
 
+    def test_only_bonds_may_omit_the_value(self):
+        for text in ("C1 - C2 1.0\nC2 - C1 - C3\n", "C1 - C2 - C3 - C4\n"):
+            with self.assertRaisesRegex(StructureSpecError, "only bond records"):
+                parseStructureSpecString(text)
+
     def test_partial_and_fixed(self):
         spec = parseStructureSpecString(
             "@symmetry C2(z): C1<->C2, H1, ...\n@symmetry sigma(y): C1<->C2\n"
