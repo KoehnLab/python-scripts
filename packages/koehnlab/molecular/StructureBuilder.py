@@ -888,13 +888,23 @@ def _checkSymmetry(spec: StructureSpec, generators: Sequence[Operation], group: 
                     )
                 )
 
-    values = {c.indices: c.value for c in spec.constraints}
+    # Combinations of the operations that have the same matrix must move the atoms in the same way (in particular, nothing may
+    # be exchanged by a combination that leaves all positions where they are)
+    byMatrix: Dict[Tuple[float, ...], np.ndarray] = {}
     for permutation, matrix in group:
-        if not np.array_equal(permutation, identity) and np.allclose(matrix, np.eye(3), atol=1e-6):
+        key = tuple((np.round(matrix, 6) + 0.0).ravel().tolist())
+        other = byMatrix.setdefault(key, permutation)
+        if not np.array_equal(other, permutation):
+            atom = int(np.flatnonzero(other != permutation)[0])
             raise StructureSpecError(
-                "A combination of the symmetry operations exchanges atoms without moving them"
+                "The symmetry operations are inconsistent with each other: combinations of them that act in the same way on the "
+                "positions move %s to %s in one case and to %s in another case. The atoms of the operations have to be chosen "
+                "such that they describe one structure (or leave out atoms and add '...' to let the builder infer them)"
+                % (spec.labels[atom], spec.labels[other[atom]], spec.labels[permutation[atom]])
             )
 
+    values = {c.indices: c.value for c in spec.constraints}
+    for permutation, matrix in group:
         # Mirroring changes the sign of dihedral angles
         sign = 1.0 if np.linalg.det(matrix) > 0 else -1.0
         for constraint in spec.constraints:

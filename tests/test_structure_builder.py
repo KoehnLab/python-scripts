@@ -745,6 +745,17 @@ class TestSymmetryInference(unittest.TestCase):
         with self.assertRaisesRegex(StructureSpecError, "ambiguous"):
             buildStructure(_parse(WATER_PARTIAL))
 
+    def test_inconsistent_operations(self):
+        # C3 and S4 of a tetrahedron have to permute the hydrogens consistently
+        text = (
+            "C1 - H1 1.087\nC1 - H2\nC1 - H3\nC1 - H4\nH1 - C1 - H2 109.47\n"
+            "@symmetry C3(1,1,1): C1, H1, H2->H3->H4\n@symmetry S4(z): C1, H1->H2->H4->H3\n"
+        )
+        with self.assertRaisesRegex(StructureSpecError, "inconsistent with each other"):
+            buildStructure(_parse(text))
+
+        self.assertTrue(buildStructure(_parse(text.replace("H1->H2->H4->H3", "H1->H2->H3->H4"))).converged)
+
     def test_group_with_starting_geometry(self):
         guess = Molecule(
             [

@@ -324,6 +324,14 @@ No atom mapping exists for the symmetry operation C2(y) that is compatible with 
 C2, C4). Check for missing or extra bonds around these atoms
 ```
 
+If you give all atoms of the operations yourself, they have to be consistent with each other. Otherwise the error names an atom that the
+combinations of the operations move to different places:
+
+```
+The symmetry operations are inconsistent with each other: combinations of them that act in the same way on the positions move H1 to H1 in one
+case and to H3 in another case. ...
+```
+
 You can mix `@group` with explicit lines: a `@symmetry` line for an operation of the group (compared by its matrix, so
 `sigma(0,1,0)` is the same as `sigma(y)`) provides the atoms you know, and the rest is inferred. Example,
 [`examples/ethane_d3d.txt`](examples/ethane_d3d.txt) together with [`examples/ethane_guess.xyz`](examples/ethane_guess.xyz):
