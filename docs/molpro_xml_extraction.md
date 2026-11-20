@@ -34,6 +34,7 @@ The result is a *tidy* table with one row per extracted value. All aspects of a 
 | Column | Meaning |
 |---|---|
 | `molecule` | Name of the XYZ file given via `geometry=<name>.xyz` in the input. Otherwise the Hill formula of the geometry (e.g. `C3H5`), otherwise the name of the XML file without the run suffix |
+| `label` | Optional text that tells apart calculations of the same molecule and basis set, see "Labels" below. Empty by default |
 | `formula` | Hill formula, if the file contains the geometry (only reported by steps that write it, e.g. SCF) |
 | `basis_set`, `functional` | From the `<summary>` of the job step; steps without a summary inherit the value of earlier steps |
 | `command` | Molpro command of the job step. A trailing `-SCF` is dropped (`DF-RHF-SCF` -> `DF-RHF`) unless the input uses the long name |
@@ -69,8 +70,8 @@ Results can be collected over time in a storage file instead of re-extracting ev
 extract_data.py path/to/new_calculations --merge-into results.csv
 ```
 
-A result is identified by `molecule`, `basis_set`, `functional`, `command`, `property`, `method`, `multiplicity`, `symmetry` and `state`.
-The file it came from does not matter, so several runs of the same calculation count as the same result.
+A result is identified by `molecule`, `label`, `basis_set`, `functional`, `command`, `property`, `method`, `multiplicity`, `symmetry` and
+`state`. The file it came from does not matter, so several runs of the same calculation count as the same result.
 
 - Results that already exist with the same value are not added again. Running the same command twice therefore changes nothing.
 - Results with the same identity but a different value are a **conflict**. By default the script aborts with a list of the conflicts and does
@@ -80,9 +81,32 @@ The file it came from does not matter, so several runs of the same calculation c
 - Results are never removed. If a calculation is deleted or its settings change, edit the storage file.
 - `--merge-into` always writes the complete table and cannot be combined with `-o`, `--pivot` or column selection.
 
-Mind that the identity does not contain everything that can differ between calculations, e.g. the active space or the Molpro options. If
-you run such variants for the same molecule and basis set, they show up as conflicts and the storage can only hold one of them, so keep
-them in separate storage files.
+### Labels
+
+The identity does not contain everything that can differ between calculations, e.g. the active space or the Molpro options. If you run
+such variants for the same molecule and basis set, they show up as conflicts. Give them different **labels** to keep them apart. The label
+is part of the identity and empty by default, so nothing changes if you don't use it.
+
+| Option | Label |
+|---|---|
+| `--label TEXT` | The given text for all results of this run |
+| `--label-from-path REGEX` | First capture group (else the whole match) of the expression, searched in the path of the XML file |
+| `--label-from-input REGEX` | The same, searched line by line in the Molpro input |
+
+If several options are given, the parts are joined by ` | `, and a part that does not match is left out. Examples:
+
+```bash
+# Different directories for different variants: label = name of the directory
+extract_data.py runs/ --label-from-path '/(active_space|old_data)/' --merge-into results.csv
+
+# Name of the run (the file name without the scheduler ID), e.g. 'ch3_dz_gecco' for 'ch3_dz_gecco.20261119-132252-ab12.xml'
+extract_data.py runs/ --label-from-path '/([^/]+?)\.\d+-\d+[^/]*\.xml$' --merge-into results.csv
+
+# Active space from the input line '{casscf; occ,6,1,4,1; closed,6,1,4,0; ...}'
+extract_data.py runs/ --label-from-input 'occ,([^;}]*)' --merge-into results.csv
+```
+
+Reruns of the same variant have the same label and still conflict, which is what `--on-conflict newer` is for.
 
 ## Using it from Python
 
