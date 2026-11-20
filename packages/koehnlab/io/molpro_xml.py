@@ -7,6 +7,7 @@ done by other modules.
 """
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -51,6 +52,9 @@ class Record:
     # "<Type>: <message>" for all <error> elements of the step
     messages: tuple = ()
     errored: bool = False
+    # Filled in by name_molecules()
+    molecule: Optional[str] = None
+    formula: Optional[str] = None
 
 
 @dataclass
@@ -181,3 +185,68 @@ def find_xml_files(search_path: str) -> list:
     for root, _dirs, files in os.walk(search_path):
         found.extend(os.path.join(root, f) for f in files if f.endswith(".xml"))
     return sorted(found)
+
+
+def hill_formula(elements) -> str:
+    """Molecular formula in Hill order (C first, then H, then alphabetical; purely alphabetical if there is no carbon)"""
+    counts: dict = {}
+    for element in elements:
+        counts[element] = counts.get(element, 0) + 1
+    if "C" in counts:
+        order = [e for e in ("C", "H") if e in counts] + sorted(e for e in counts if e not in ("C", "H"))
+    else:
+        order = sorted(counts)
+    return "".join(e if counts[e] == 1 else "%s%d" % (e, counts[e]) for e in order)
+
+
+_GEOMETRY_REGEX = re.compile(r"\bgeom(?:etry)?\s*=\s*([^\s,;{}]+)", re.IGNORECASE)
+_RUN_SUFFIX_REGEX = re.compile(r"\.\d+-\d+(?:-[0-9a-f]+)?$")
+
+
+def xyz_names_from_input(input_text: str) -> list:
+    """Names (basename without extension) of all distinct XYZ files referenced by geometry=... in the input, in order"""
+    names: list = []
+    for match in _GEOMETRY_REGEX.finditer(input_text):
+        base = os.path.basename(match.group(1))
+        if base.lower().endswith(".xyz") and base[:-4] not in names:
+            names.append(base[:-4])
+    return names
+
+
+def name_from_path(path: str) -> str:
+    """File name without extension and without the run suffix that Molpro wrappers append (e.g. '.20261119-130642-ab12cd')"""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    return _RUN_SUFFIX_REGEX.sub("", stem)
+
+
+def name_molecules(result: ParseResult) -> None:
+    """Sets Record.molecule and Record.formula for all records of the parse result (in place).
+
+    The molecule name is, in this order of preference:
+    1. the name of the XYZ file given in the input via geometry=<file>.xyz. If the input references several files, they
+       are assigned to the distinct formulas in the order in which these occur in the job steps, provided that the
+       numbers match. Otherwise this strategy is skipped as it would be ambiguous.
+    2. the Hill formula of the geometry (e.g. 'C3H5')
+    3. the name of the XML file
+    """
+    for job_index in sorted({r.job_index for r in result.records}):
+        job_records = [r for r in result.records if r.job_index == job_index]
+        formulas = [hill_formula(r.elements) if r.elements else None for r in job_records]
+        distinct = list(dict.fromkeys(f for f in formulas if f is not None))
+        xyz_names = xyz_names_from_input(result.inputs.get(job_index, ""))
+
+        by_formula: dict = {}
+        if xyz_names and (len(xyz_names) == len(distinct) or (len(xyz_names) == 1 and not distinct)):
+            by_formula = dict(zip(distinct, xyz_names))
+        single_xyz = xyz_names[0] if len(xyz_names) == 1 and not distinct else None
+
+        for record, formula in zip(job_records, formulas):
+            record.formula = formula
+            if formula is not None and formula in by_formula:
+                record.molecule = by_formula[formula]
+            elif single_xyz is not None:
+                record.molecule = single_xyz
+            elif formula is not None:
+                record.molecule = formula
+            else:
+                record.molecule = name_from_path(result.path)

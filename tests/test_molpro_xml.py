@@ -3,7 +3,9 @@
 import os
 import unittest
 
-from koehnlab.io.molpro_xml import parse_molpro_xml, find_xml_files
+from koehnlab.io.molpro_xml import (
+    parse_molpro_xml, find_xml_files, hill_formula, xyz_names_from_input, name_from_path, name_molecules, ParseResult, Record
+)
 
 script_dir: str = os.path.dirname(os.path.realpath(__file__))
 data_dir: str = os.path.join(script_dir, "data", "molpro_xml")
@@ -77,6 +79,71 @@ class TestMolproXmlParser(unittest.TestCase):
         found = find_xml_files(data_dir)
         self.assertEqual([os.path.basename(f) for f in found], ["invalid.xml", "multi_step.xml"])
         self.assertEqual(find_xml_files(found[1]), [found[1]])
+
+
+def _record(job_index=0, elements=()):
+    return Record(
+        source_path="x", job_index=job_index, step_index=0, command="C", commandset=None, parent_command=None,
+        last_nested=False, property="Energy", method=None, value=1.0, raw_value="1.0", principal=True, state=None,
+        symmetry=None, multiplicity=None, basis_set=None, functional=None, elements=elements,
+    )
+
+
+class TestMoleculeNaming(unittest.TestCase):
+    def test_hill_formula(self):
+        self.assertEqual(hill_formula(["H", "C", "C", "C", "H", "H", "H", "H", "H"]), "C3H6")
+        self.assertEqual(hill_formula(["O", "H", "H"]), "H2O")
+        self.assertEqual(hill_formula(["N", "O", "O", "C", "H", "H", "H"]), "CH3NO2")
+        self.assertEqual(hill_formula(["Cl", "Na"]), "ClNa")
+        self.assertEqual(hill_formula(["Zn"]), "Zn")
+
+    def test_xyz_names(self):
+        self.assertEqual(xyz_names_from_input("basis=vdz\ngeometry=/a/b/allyl.xyz\nhf"), ["allyl"])
+        self.assertEqual(xyz_names_from_input("geom=a.xyz\nhf\ngeometry=b.xyz\ngeometry=a.xyz"), ["a", "b"])
+        # Inline geometries and other formats do not give a name
+        self.assertEqual(xyz_names_from_input("geometry={O;H,O,1.0}\ngeometry=foo.zmat"), [])
+
+    def test_name_from_path(self):
+        self.assertEqual(name_from_path("/x/allyl_dz_gecco.20261119-130642-45592bf8557d.xml"), "allyl_dz_gecco")
+        self.assertEqual(name_from_path("allyl.316816-20261020.xml"), "allyl")
+        self.assertEqual(name_from_path("plain.xml"), "plain")
+
+    def test_xyz_name_is_preferred(self):
+        result = parse_molpro_xml(os.path.join(data_dir, "multi_step.xml"))
+        name_molecules(result)
+        self.assertEqual({r.molecule for r in result.records}, {"ch"})
+        self.assertEqual(result.records[0].formula, "CH")
+
+    def test_formula_fallback_for_inline_geometry(self):
+        result = ParseResult(path="a.1-2.xml", inputs={0: "geometry={O;H,O,1.0}"}, records=[_record(elements=("O", "H", "H"))])
+        name_molecules(result)
+        self.assertEqual(result.records[0].molecule, "H2O")
+
+    def test_multiple_molecules_in_one_job(self):
+        records = [_record(elements=("O", "H", "H")), _record(elements=("O", "H", "H")), _record(elements=("C", "O", "O"))]
+        result = ParseResult(path="a.xml", inputs={0: "geometry=water.xyz\ngeometry=co2.xyz"}, records=records)
+        name_molecules(result)
+        self.assertEqual([r.molecule for r in records], ["water", "water", "co2"])
+        self.assertEqual([r.formula for r in records], ["H2O", "H2O", "CO2"])
+
+    def test_ambiguous_xyz_names_fall_back_to_formula(self):
+        records = [_record(elements=("O", "H", "H"))]
+        result = ParseResult(path="a.xml", inputs={0: "geometry=a.xyz\ngeometry=b.xyz"}, records=records)
+        name_molecules(result)
+        self.assertEqual(records[0].molecule, "H2O")
+
+    def test_file_name_as_last_resort(self):
+        records = [_record()]
+        result = ParseResult(path="/x/foo.20261119-130642-ab12.xml", records=records)
+        name_molecules(result)
+        self.assertEqual(records[0].molecule, "foo")
+        self.assertIsNone(records[0].formula)
+
+    def test_jobs_are_named_independently(self):
+        records = [_record(job_index=0, elements=("O", "H", "H")), _record(job_index=1, elements=("C", "O", "O"))]
+        result = ParseResult(path="a.xml", inputs={0: "geometry=water.xyz", 1: "geometry=co2.xyz"}, records=records)
+        name_molecules(result)
+        self.assertEqual([r.molecule for r in records], ["water", "co2"])
 
 
 if __name__ == "__main__":
