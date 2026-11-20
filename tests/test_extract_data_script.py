@@ -99,6 +99,33 @@ class TestExtractDataScript(unittest.TestCase):
         self.assertIn(-38.6, list(frame["value"]))
         self.assertNotIn(-38.5, list(frame["value"]))
 
+    def test_labels_distinguish_conflicting_results(self):
+        shutil.copy(MULTI_STEP, self.path("a.xml"))
+        with open(MULTI_STEP) as f:
+            changed = f.read().replace("-38.5", "-38.6")
+        os.mkdir(self.path("variant"))
+        with open(os.path.join(self.dir, "variant", "a.xml"), "w") as f:
+            f.write(changed)
+        store = self.path("store.csv")
+        self.assertEqual(self.run_script("-q", self.path("a.xml"), "--merge-into", store)[0], 0)
+        # Without a label of its own, the variant would conflict with the stored results
+        self.assertNotEqual(self.run_script("-q", os.path.join(self.dir, "variant", "a.xml"), "--merge-into", store)[0], 0)
+        code, _, _ = self.run_script("-q", os.path.join(self.dir, "variant", "a.xml"), "--label-from-path", "/(variant)/", "--merge-into", store)
+        self.assertEqual(code, 0)
+        frame = pd.read_csv(store, sep=";")
+        self.assertEqual(list(frame["label"].dropna().unique()), ["variant"])
+        self.assertEqual(int(frame["label"].isna().sum()), 4)
+        self.assertEqual(len(frame), 8)
+
+    def test_label_column_is_shown_only_if_used(self):
+        self.assertNotIn("label", self.run_script("-q", MULTI_STEP)[1].splitlines()[0])
+        self.assertIn("label", self.run_script("-q", MULTI_STEP, "--label-from-input", r"^basis=(\S+)")[1].splitlines()[0])
+
+    def test_invalid_label_regex(self):
+        code, _, err = self.run_script("-q", MULTI_STEP, "--label-from-path", "(")
+        self.assertNotEqual(code, 0)
+        self.assertIn("regular expression", err)
+
     def test_merge_into_json(self):
         store = self.path("store.json")
         self.run_script("-q", MULTI_STEP, "--merge-into", store)

@@ -9,10 +9,10 @@ from koehnlab.io.molpro_table import CONFLICT_POLICIES, conform_table, extract_t
 from koehnlab.io.tabular_output import available_formats, format_for_path, read_table, readable_formats, write_table
 
 DEFAULT_COLUMNS = [
-    "molecule", "basis_set", "functional", "command", "property", "method", "multiplicity", "symmetry", "state",
+    "molecule", "label", "basis_set", "functional", "command", "property", "method", "multiplicity", "symmetry", "state",
     "value", "unit", "source_path",
 ]
-PIVOT_INDEX = ["molecule", "functional", "command", "property", "method", "multiplicity", "symmetry", "state"]
+PIVOT_INDEX = ["molecule", "label", "functional", "command", "property", "method", "multiplicity", "symmetry", "state"]
 
 
 def parse_arguments(argv=None):
@@ -40,6 +40,21 @@ def parse_arguments(argv=None):
     parser.add_argument(
         "--nested-steps", choices=NESTED_STEP_MODES, default=ExtractionSpec.nested_steps,
         help="Which steps nested in other steps (e.g. single points of a geometry optimization) to consider (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--label", metavar="TEXT",
+        help="Label all results with this text. Labels tell apart calculations of the same molecule and basis set (e.g. different "
+        "active spaces) and are part of the identity of a result when merging",
+    )
+    parser.add_argument(
+        "--label-from-path", metavar="REGEX",
+        help="Label results with the first capture group (or else the whole match) of this regular expression, searched in the "
+        "path of the XML file, e.g. '/(active_space|old_data)/'",
+    )
+    parser.add_argument(
+        "--label-from-input", metavar="REGEX",
+        help="Label results with the first capture group (or else the whole match) of this regular expression, searched line by "
+        "line in the Molpro input, e.g. 'occ,([^;}]*)'. Combined with the other label options, the parts are joined by ' | '",
     )
     parser.add_argument("--keep-errored", action="store_true", help="Do not skip job steps for which Molpro reported an error")
     parser.add_argument("--columns", nargs="+", metavar="COLUMN", help="Columns to output (default: %s)" % ", ".join(DEFAULT_COLUMNS))
@@ -104,12 +119,18 @@ def merge_into_file(table, args):
 def main(argv=None):
     args = parse_arguments(argv)
 
-    spec = ExtractionSpec(
-        properties=None if args.all_properties else (tuple(args.properties) if args.properties else ExtractionSpec.properties),
-        principal_only=not args.include_non_principal,
-        nested_steps=args.nested_steps,
-        skip_errored_steps=not args.keep_errored,
-    )
+    try:
+        spec = ExtractionSpec(
+            properties=None if args.all_properties else (tuple(args.properties) if args.properties else ExtractionSpec.properties),
+            principal_only=not args.include_non_principal,
+            nested_steps=args.nested_steps,
+            skip_errored_steps=not args.keep_errored,
+            label=args.label,
+            label_from_path=args.label_from_path,
+            label_from_input=args.label_from_input,
+        )
+    except ValueError as e:
+        sys.exit(str(e))
     extraction = extract_table(args.search_paths, spec)
     table = extraction.table
 
@@ -137,7 +158,8 @@ def main(argv=None):
         table = table.pivot_table(index=index, columns=args.pivot, values="value", aggfunc="first", observed=True).reset_index()
         table.columns.name = None
     else:
-        columns = list(table.columns) if args.all_columns else (args.columns or DEFAULT_COLUMNS)
+        default_columns = [c for c in DEFAULT_COLUMNS if c != "label" or table["label"].notna().any()]
+        columns = list(table.columns) if args.all_columns else (args.columns or default_columns)
         unknown = [c for c in columns if c not in table.columns]
         if unknown:
             sys.exit("Unknown column(s): %s. Available columns: %s" % (", ".join(unknown), ", ".join(table.columns)))
