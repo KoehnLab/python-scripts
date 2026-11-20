@@ -1,0 +1,123 @@
+"""Writing pandas DataFrames in various file formats.
+
+Formats are looked up in a registry by name or by file suffix. Additional formats can be added with :func:`register_format`.
+Writers that need optional libraries (Parquet, Excel) report a helpful error if the library is missing.
+"""
+
+import os
+import sys
+from dataclasses import dataclass
+from typing import Callable, Optional
+
+import pandas as pd
+
+DEFAULT_FORMAT = "table"
+CSV_SEPARATOR = ";"
+
+
+@dataclass
+class OutputFormat:
+    name: str
+    suffixes: tuple
+    # Called as write(frame, target) with target being a path or an open file object
+    write: Callable
+    # Binary formats need a binary stream if the target is not a path
+    binary: bool = False
+
+
+_FORMATS: dict = {}
+
+
+def register_format(fmt: OutputFormat) -> None:
+    _FORMATS[fmt.name] = fmt
+
+
+def available_formats() -> list:
+    return list(_FORMATS)
+
+
+def format_for_path(path: str) -> OutputFormat:
+    """Determines the output format from the suffix of the path"""
+    suffix = os.path.splitext(path)[1].lower()
+    for fmt in _FORMATS.values():
+        if suffix in fmt.suffixes:
+            return fmt
+    raise ValueError(
+        "Cannot infer the output format from '%s'. Use one of the suffixes %s or specify the format explicitly (%s)"
+        % (path, ", ".join(s for f in _FORMATS.values() for s in f.suffixes), ", ".join(_FORMATS))
+    )
+
+
+def write_table(frame: pd.DataFrame, destination: Optional[str] = None, fmt: Optional[str] = None) -> None:
+    """Writes the table to the destination.
+
+    The destination is a file path or None for stdout. The format is given by name or, if omitted, inferred from the suffix of
+    the destination. Writing to stdout defaults to a human-readable table.
+    """
+    if fmt is not None:
+        if fmt not in _FORMATS:
+            raise ValueError("Unknown output format '%s'. Available formats: %s" % (fmt, ", ".join(_FORMATS)))
+        output_format = _FORMATS[fmt]
+    elif destination is not None:
+        output_format = format_for_path(destination)
+    else:
+        output_format = _FORMATS[DEFAULT_FORMAT]
+
+    if destination is not None:
+        output_format.write(frame, destination)
+    else:
+        output_format.write(frame, sys.stdout.buffer if output_format.binary else sys.stdout)
+
+
+def _write_text(text: str, target) -> None:
+    if isinstance(target, (str, os.PathLike)):
+        with open(target, "w") as f:
+            f.write(text)
+    else:
+        target.write(text)
+
+
+def _write_table(frame: pd.DataFrame, target) -> None:
+    # Going through object columns prints floats with full precision (the default would round energies to 6 decimals) and
+    # shows missing values consistently for all column types
+    shown = frame.astype(object).where(frame.notna(), "-")
+    _write_text(shown.to_string(index=False) + "\n", target)
+
+
+def _write_markdown(frame: pd.DataFrame, target) -> None:
+    try:
+        text = frame.to_markdown(index=False)
+    except ImportError as e:
+        raise ImportError("Writing Markdown requires the 'tabulate' package (pip3 install tabulate)") from e
+    _write_text(text + "\n", target)
+
+
+def _write_json(frame: pd.DataFrame, target) -> None:
+    _write_text(frame.to_json(orient="records", indent=2) + "\n", target)
+
+
+def _write_jsonl(frame: pd.DataFrame, target) -> None:
+    _write_text(frame.to_json(orient="records", lines=True), target)
+
+
+def _optional(function: Callable, library: str, pip_name: str) -> Callable:
+    def write(frame, target):
+        try:
+            function(frame, target)
+        except ImportError as e:
+            raise ImportError("Writing this format requires the '%s' package (pip3 install %s)" % (library, pip_name)) from e
+
+    return write
+
+
+for _fmt in (
+    OutputFormat("table", (".txt",), _write_table),
+    OutputFormat("csv", (".csv",), lambda frame, target: frame.to_csv(target, sep=CSV_SEPARATOR, index=False)),
+    OutputFormat("tsv", (".tsv",), lambda frame, target: frame.to_csv(target, sep="\t", index=False)),
+    OutputFormat("json", (".json",), _write_json),
+    OutputFormat("jsonl", (".jsonl", ".ndjson"), _write_jsonl),
+    OutputFormat("markdown", (".md",), _write_markdown),
+    OutputFormat("parquet", (".parquet",), _optional(lambda f, t: f.to_parquet(t, index=False), "pyarrow", "pyarrow"), binary=True),
+    OutputFormat("excel", (".xlsx",), _optional(lambda f, t: f.to_excel(t, index=False), "openpyxl", "openpyxl"), binary=True),
+):
+    register_format(_fmt)
