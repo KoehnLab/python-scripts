@@ -41,6 +41,7 @@ The result is a *tidy* table with one row per extracted value. All aspects of a 
 | `multiplicity`, `symmetry`, `state` | State labels as reported by Molpro |
 | `value`, `unit` | Value (empty for non-scalar properties such as dipole moments) and its unit (atomic units) |
 | `principal`, `messages` | Whether Molpro flags the property as principal; warnings/errors of the job step |
+| `date` | When the calculation was run (UTC, from the XML metadata; empty if missing) |
 | `source_path`, `job_index`, `step_index` | Where the value came from |
 
 If an XML file does not contain the input, the input file next to it is used instead: `<name>.inp` (or `.com`) in the same directory, where `<name>` is the base name of the XML file or a prefix of it ending before a `.`, so `calc.inp` belongs to `calc.20261119-130642-ab12.xml`. The longest matching name wins.
@@ -59,6 +60,30 @@ the input are assigned to the geometries in the order they occur.
 | `--columns ...` / `--all-columns` | Columns to output |
 | `--pivot COLUMN` | Spread the values of a column over several columns (the first value is kept if results are not unique) |
 
+## Merging into an existing table
+
+Results can be collected over time in a storage file instead of re-extracting everything every time:
+
+```bash
+# Creates results.csv or adds the new results to it (any format that can be read back: csv, tsv, json, jsonl, parquet, xlsx)
+extract_data.py path/to/new_calculations --merge-into results.csv
+```
+
+A result is identified by `molecule`, `basis_set`, `functional`, `command`, `property`, `method`, `multiplicity`, `symmetry` and `state`.
+The file it came from does not matter, so several runs of the same calculation count as the same result.
+
+- Results that already exist with the same value are not added again. Running the same command twice therefore changes nothing.
+- Results with the same identity but a different value are a **conflict**. By default the script aborts with a list of the conflicts and does
+  not touch the storage file. `--on-conflict` selects another policy: `newer` (keep the result with the latest `date`), `keep-existing`,
+  `replace` (take the new one) or `keep-both`.
+- The storage file is replaced only after the merged table was written successfully.
+- Results are never removed. If a calculation is deleted or its settings change, edit the storage file.
+- `--merge-into` always writes the complete table and cannot be combined with `-o`, `--pivot` or column selection.
+
+Mind that the identity does not contain everything that can differ between calculations, e.g. the active space or the Molpro options. If
+you run such variants for the same molecule and basis set, they show up as conflicts and the storage can only hold one of them, so keep
+them in separate storage files.
+
 ## Using it from Python
 
 The script is a thin wrapper around the `koehnlab.io` modules. These need `pandas` and `lxml`, and can be used directly (e.g. in a notebook):
@@ -72,6 +97,13 @@ table = extraction.table              # pandas.DataFrame
 extraction.problems                   # [(path, description), ...]
 
 table.pivot_table(index=["molecule", "state"], columns="basis_set", values="value", observed=True)
+
+# Merging into stored results
+from koehnlab.io.molpro_table import conform_table, merge_tables
+from koehnlab.io.tabular_output import read_table, write_table
+
+stored = conform_table(read_table("results.csv"))
+write_table(merge_tables(stored, table, on_conflict="newer"), "results.csv")
 ```
 
 | Module | Purpose |
@@ -79,4 +111,5 @@ table.pivot_table(index=["molecule", "state"], columns="basis_set", values="valu
 | `molpro_xml` | Parser. Returns plain `Record` objects, no pandas needed. Also names molecules |
 | `molpro_extract` | `ExtractionSpec` and `select_records`: which results to keep and how to normalize them |
 | `molpro_table` | `to_dataframe` / `extract_table`: builds the DataFrame |
-| `tabular_output` | `write_table` and a registry of output formats (`register_format` adds new ones). Parquet and Excel need `pyarrow`/`openpyxl` |
+| `molpro_table` also | `merge_tables(existing, new, on_conflict)` merges two tables as described above; `conform_table` restores the column types of a table read from a file |
+| `tabular_output` | `write_table`, `read_table` and a registry of output formats (`register_format` adds new ones). Parquet and Excel need `pyarrow`/`openpyxl` |
