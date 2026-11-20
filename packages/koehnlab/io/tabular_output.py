@@ -38,6 +38,11 @@ def available_formats() -> list:
     return list(_FORMATS)
 
 
+def readable_formats() -> list:
+    """Names of the formats that read_table can read"""
+    return [name for name, fmt in _FORMATS.items() if fmt.read is not None]
+
+
 def format_for_path(path: str) -> OutputFormat:
     """Determines the output format from the suffix of the path"""
     suffix = os.path.splitext(path)[1].lower()
@@ -61,8 +66,10 @@ def read_table(path: str, fmt: Optional[str] = None) -> pd.DataFrame:
     if output_format is None:
         output_format = format_for_path(path)
     if output_format.read is None:
-        readable = ", ".join(f.name for f in _FORMATS.values() if f.read is not None)
-        raise ValueError("Tables in the format '%s' cannot be read back. Readable formats: %s" % (output_format.name, readable))
+        raise ValueError(
+            "Tables in the format '%s' cannot be read back. Readable formats: %s"
+            % (output_format.name, ", ".join(readable_formats()))
+        )
     return output_format.read(path)
 
 
