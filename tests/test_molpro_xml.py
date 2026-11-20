@@ -67,6 +67,11 @@ class TestMolproXmlParser(unittest.TestCase):
         result = parse_molpro_xml(os.path.join(data_dir, "dft_dispersion.xml"))
         self.assertEqual({r.basis_set for r in result.records}, {"DEF2-TZVP"})
 
+    def test_date(self):
+        self.assertEqual({r.date for r in self.result.records}, {"2026-11-19T14:07:21+01:00"})
+        result = parse_molpro_xml(os.path.join(data_dir, "dft_dispersion.xml"))
+        self.assertEqual({r.date for r in result.records}, {None})
+
     def test_input_is_available(self):
         text = self.result.inputs[0]
         self.assertIn("geometry=/some/path/ch.xyz", text)

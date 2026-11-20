@@ -93,11 +93,20 @@ def _write_markdown(frame: pd.DataFrame, target) -> None:
 
 
 def _write_json(frame: pd.DataFrame, target) -> None:
-    _write_text(frame.to_json(orient="records", indent=2) + "\n", target)
+    _write_text(frame.to_json(orient="records", indent=2, date_format="iso") + "\n", target)
 
 
 def _write_jsonl(frame: pd.DataFrame, target) -> None:
-    _write_text(frame.to_json(orient="records", lines=True), target)
+    _write_text(frame.to_json(orient="records", lines=True, date_format="iso"), target)
+
+
+def _write_excel(frame: pd.DataFrame, target) -> None:
+    # Excel cannot store time zones
+    frame = frame.copy()
+    for column in frame.columns:
+        if isinstance(frame[column].dtype, pd.DatetimeTZDtype):
+            frame[column] = frame[column].dt.tz_convert("UTC").dt.tz_localize(None)
+    frame.to_excel(target, index=False)
 
 
 def _optional(function: Callable, library: str, pip_name: str) -> Callable:
@@ -118,6 +127,6 @@ for _fmt in (
     OutputFormat("jsonl", (".jsonl", ".ndjson"), _write_jsonl),
     OutputFormat("markdown", (".md",), _write_markdown),
     OutputFormat("parquet", (".parquet",), _optional(lambda f, t: f.to_parquet(t, index=False), "pyarrow", "pyarrow"), binary=True),
-    OutputFormat("excel", (".xlsx",), _optional(lambda f, t: f.to_excel(t, index=False), "openpyxl", "openpyxl"), binary=True),
+    OutputFormat("excel", (".xlsx",), _optional(_write_excel, "openpyxl", "openpyxl"), binary=True),
 ):
     register_format(_fmt)

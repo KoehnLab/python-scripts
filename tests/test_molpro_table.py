@@ -40,6 +40,12 @@ class TestMolproTable(unittest.TestCase):
         by_molecule = self.table.pivot_table(index="molecule", columns="basis_set", values="value", observed=True)
         self.assertEqual(by_molecule.shape, (2, 3))
 
+    def test_date_is_utc_datetime(self):
+        self.assertEqual(str(self.table["date"].dtype), "datetime64[ns, UTC]".replace("ns", self.table["date"].dtype.unit))
+        dated = self.table[self.table["molecule"] == "ch"]["date"]
+        self.assertEqual(set(dated), {pd.Timestamp("2026-11-19T13:07:21", tz="UTC")})
+        self.assertTrue(self.table[self.table["molecule"] == "water"]["date"].isna().all())
+
     def test_problems_are_collected(self):
         problems = {(os.path.basename(path), text) for path, text in self.extraction.problems}
         self.assertTrue(any(name == "invalid.xml" and text.startswith("Invalid XML") for name, text in problems))

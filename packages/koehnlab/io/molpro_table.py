@@ -15,7 +15,7 @@ from .molpro_xml import Record, find_xml_files, name_molecules, parse_molpro_xml
 
 COLUMNS = (
     "molecule", "formula", "basis_set", "functional", "command", "property", "method", "multiplicity", "symmetry",
-    "state", "value", "unit", "principal", "messages", "source_path", "job_index", "step_index",
+    "state", "value", "unit", "principal", "messages", "date", "source_path", "job_index", "step_index",
 )
 
 _CATEGORICAL = ("molecule", "formula", "basis_set", "functional", "command", "property", "method", "unit")
@@ -39,7 +39,7 @@ def to_dataframe(records: Iterable[Record]) -> pd.DataFrame:
             "molecule": r.molecule, "formula": r.formula, "basis_set": r.basis_set, "functional": r.functional,
             "command": r.command, "property": r.property, "method": r.method, "multiplicity": r.multiplicity,
             "symmetry": r.symmetry, "state": r.state, "value": r.value, "unit": unit_of(r.property),
-            "principal": r.principal, "messages": "; ".join(r.messages), "source_path": r.source_path,
+            "principal": r.principal, "messages": "; ".join(r.messages), "date": r.date, "source_path": r.source_path,
             "job_index": r.job_index, "step_index": r.step_index,
         }
         for r in records
@@ -51,6 +51,7 @@ def to_dataframe(records: Iterable[Record]) -> pd.DataFrame:
         frame[column] = frame[column].astype("category")
     frame["value"] = frame["value"].astype("float64")
     frame["principal"] = frame["principal"].astype("bool")
+    frame["date"] = pd.to_datetime(frame["date"], utc=True, format="ISO8601")
     return frame
 
 

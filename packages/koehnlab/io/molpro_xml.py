@@ -55,6 +55,8 @@ class Record:
     # Filled in by name_molecules()
     molecule: Optional[str] = None
     formula: Optional[str] = None
+    # ISO 8601 timestamp of the job (dc:date metadata), e.g. "2026-11-19T14:07:21+01:00"
+    date: Optional[str] = None
 
 
 @dataclass
@@ -121,6 +123,13 @@ def _read_input_file(path: str) -> Optional[str]:
         return None
 
 
+def _job_date(job) -> Optional[str]:
+    for metadata in job.iter(_q("metadata", CML_NS)):
+        if metadata.get("name") == "dc:date":
+            return metadata.get("content")
+    return None
+
+
 def _input_text(job) -> Optional[str]:
     input_elem = job.find(_q("input"))
     if input_elem is None:
@@ -162,6 +171,7 @@ def parse_molpro_xml(path: str) -> ParseResult:
 
     step_index = 0
     for job_index, job in enumerate(tree.getroot().iter(_q("job"))):
+        job_date = _job_date(job)
         input_text = _input_text(job)
         if input_text is None:
             input_file = find_input_file(path)
@@ -219,6 +229,7 @@ def parse_molpro_xml(path: str) -> ParseResult:
                         elements=elements,
                         messages=messages,
                         errored=errored,
+                        date=job_date,
                     )
                 )
             step_index += 1
