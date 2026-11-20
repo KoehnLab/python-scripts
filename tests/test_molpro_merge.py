@@ -86,6 +86,19 @@ class TestMerge(unittest.TestCase):
         merged = merge_tables(table(record(1.0)), table(record(1.0, source="r2.xml")))
         self.assertEqual(len(merged), 1)
 
+    def test_label_distinguishes_results(self):
+        merged = merge_tables(table(record(1.0, label="CAS(1,1)")), table(record(2.0, label="CAS(2,2)", source="r2.xml")))
+        self.assertEqual(self.values(merged), [1.0, 2.0])
+        # Same label, different value is a conflict again; no label is a label of its own
+        with self.assertRaises(MergeConflictError) as ctx:
+            merge_tables(table(record(1.0, label="CAS(1,1)")), table(record(2.0, label="CAS(1,1)", source="r2.xml")))
+        self.assertIn("label=CAS(1,1)", str(ctx.exception))
+        self.assertEqual(len(merge_tables(table(record(1.0)), table(record(2.0, label="x")))), 2)
+
+    def test_tables_without_label_column_can_be_merged(self):
+        old = table(record(1.0)).drop(columns=["label"])
+        self.assertEqual(self.values(merge_tables(old, table(record(1.0, source="r2.xml")))), [1.0])
+
     def test_source_does_not_matter_but_basis_set_does(self):
         merged = merge_tables(table(record(1.0)), table(record(2.0, basis_set="vtz")))
         self.assertEqual(len(merged), 2)

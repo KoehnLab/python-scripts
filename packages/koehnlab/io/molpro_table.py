@@ -79,7 +79,7 @@ def extract_table(paths: Iterable[str], spec: ExtractionSpec = ExtractionSpec())
 # Columns that identify a result. Deliberately excludes the origin (source_path, job_index, step_index, date), so that
 # several runs of the same calculation are recognized as the same result.
 KEY_COLUMNS = (
-    "molecule", "basis_set", "functional", "command", "property", "method", "multiplicity", "symmetry", "state",
+    "molecule", "label", "basis_set", "functional", "command", "property", "method", "multiplicity", "symmetry", "state",
 )
 
 CONFLICT_POLICIES = ("error", "newer", "keep-existing", "replace", "keep-both")
@@ -95,7 +95,10 @@ class MergeConflictError(ValueError):
         for _, row in conflicts.head(6).iterrows():
             key = ", ".join("%s=%s" % (c, row[c]) for c in KEY_COLUMNS if not pd.isna(row[c]))
             lines.append("  %s: value %r from %s" % (key, row["value"], row["source_path"]))
-        lines.append("Choose how to resolve conflicts with on_conflict / --on-conflict (%s)" % ", ".join(CONFLICT_POLICIES[1:]))
+        lines.append(
+            "Choose how to resolve conflicts with on_conflict / --on-conflict (%s), or distinguish the calculations with "
+            "labels (--label, --label-from-path, --label-from-input)" % ", ".join(CONFLICT_POLICIES[1:])
+        )
         super().__init__("\n".join(lines))
 
 
