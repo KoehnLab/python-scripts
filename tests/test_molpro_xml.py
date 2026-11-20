@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 import os
+import tempfile
 import unittest
 
 from koehnlab.io.molpro_extract import ExtractionSpec, select_records
 from koehnlab.io.molpro_xml import (
-    parse_molpro_xml, find_xml_files, hill_formula, xyz_names_from_input, name_from_path, name_molecules, ParseResult, Record
+    parse_molpro_xml, find_xml_files, find_input_file, hill_formula, xyz_names_from_input, name_from_path, name_molecules, ParseResult, Record
 )
 
 script_dir: str = os.path.dirname(os.path.realpath(__file__))
@@ -202,6 +203,61 @@ class TestSelection(unittest.TestCase):
     def test_records_are_not_modified(self):
         self.select()
         self.assertEqual(self.result.records[0].command, "DF-RHF-SCF")
+
+
+NO_INPUT_XML = """<?xml version="1.0"?>
+<molpro xmlns="http://www.molpro.net/schema/molpro-output"><job>
+ <jobstep command="DF-RHF-SCF"><property name="Energy" method="RHF" principal="true" value="-1.0"/></jobstep>
+</job></molpro>
+"""
+
+
+class TestInputFileFallback(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def touch(self, name, content=""):
+        path = os.path.join(self.tmp.name, name)
+        with open(path, "w") as f:
+            f.write(content)
+        return path
+
+    def test_prefix_match(self):
+        xml = self.touch("calc.20261119-130642-ab12.xml", NO_INPUT_XML)
+        inp = self.touch("calc.inp", "basis=vdz\n  geometry=water.xyz\n")
+        self.assertEqual(find_input_file(xml), inp)
+        result = parse_molpro_xml(xml)
+        self.assertEqual(result.inputs[0], "basis=vdz\ngeometry=water.xyz")
+        self.assertEqual(result.problems, [])
+        name_molecules(result)
+        self.assertEqual(result.records[0].molecule, "water")
+
+    def test_exact_match_and_longest_prefix(self):
+        xml = self.touch("calc_dz.1-2.xml")
+        self.touch("calc.inp")
+        self.touch("calc_dz.inp")
+        exact = self.touch("calc_dz.1-2.inp")
+        self.assertEqual(find_input_file(xml), exact)
+        os.remove(exact)
+        self.assertEqual(find_input_file(xml), os.path.join(self.tmp.name, "calc_dz.inp"))
+
+    def test_no_false_matches(self):
+        xml = self.touch("calc_dz_gecco.1-2.xml")
+        # Only '.' separates the base name from the scheduler ID; similar but different names must not match
+        self.touch("calc.inp")
+        self.touch("calc_dz_gecco_other.inp")
+        self.assertIsNone(find_input_file(xml))
+
+    def test_missing_input_is_reported(self):
+        xml = self.touch("calc.xml", NO_INPUT_XML)
+        result = parse_molpro_xml(xml)
+        self.assertEqual(result.inputs, {})
+        self.assertEqual(len(result.problems), 1)
+
+    def test_input_in_xml_takes_precedence(self):
+        xml = os.path.join(data_dir, "multi_step.xml")
+        self.assertIn("geometry=/some/path/ch.xyz", parse_molpro_xml(xml).inputs[0])
 
 
 if __name__ == "__main__":

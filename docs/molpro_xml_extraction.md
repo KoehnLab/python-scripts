@@ -43,6 +43,8 @@ The result is a *tidy* table with one row per extracted value. All aspects of a 
 | `principal`, `messages` | Whether Molpro flags the property as principal; warnings/errors of the job step |
 | `source_path`, `job_index`, `step_index` | Where the value came from |
 
+If an XML file does not contain the input, the input file next to it is used instead: `<name>.inp` (or `.com`) in the same directory, where `<name>` is the base name of the XML file or a prefix of it ending before a `.`, so `calc.inp` belongs to `calc.20261119-130642-ab12.xml`. The longest matching name wins.
+
 Several molecules or basis sets in a single calculation are supported: the context is tracked per job step, and several `geometry=` entries in
 the input are assigned to the geometries in the order they occur.
 

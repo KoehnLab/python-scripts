@@ -85,6 +85,42 @@ def _basis_from_overall_method(overall_method: Optional[str]) -> Optional[str]:
     return None
 
 
+INPUT_FILE_SUFFIXES = (".inp", ".com")
+
+
+def find_input_file(xml_path: str) -> Optional[str]:
+    """Looks for the Molpro input file belonging to an XML file in the same directory.
+
+    The input file has the same base name as the XML file or a base name that is a prefix of it, followed by a '.', which
+    accounts for IDs of the scheduler that are appended to the names of output files (e.g. 'calc.inp' for
+    'calc.20261119-130642-ab12.xml'). The longest matching base name wins.
+    """
+    directory = os.path.dirname(xml_path) or "."
+    xml_stem = os.path.splitext(os.path.basename(xml_path))[0]
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return None
+
+    best = None
+    for entry in entries:
+        stem, suffix = os.path.splitext(entry)
+        if suffix not in INPUT_FILE_SUFFIXES or not (xml_stem == stem or xml_stem.startswith(stem + ".")):
+            continue
+        key = (len(stem), -INPUT_FILE_SUFFIXES.index(suffix))
+        if best is None or key > best[0]:
+            best = (key, entry)
+    return os.path.join(directory, best[1]) if best else None
+
+
+def _read_input_file(path: str) -> Optional[str]:
+    try:
+        with open(path, errors="replace") as f:
+            return "\n".join(line.strip() for line in f)
+    except OSError:
+        return None
+
+
 def _input_text(job) -> Optional[str]:
     input_elem = job.find(_q("input"))
     if input_elem is None:
@@ -128,8 +164,14 @@ def parse_molpro_xml(path: str) -> ParseResult:
     for job_index, job in enumerate(tree.getroot().iter(_q("job"))):
         input_text = _input_text(job)
         if input_text is None:
-            result.problems.append("Job %d is missing the input element" % job_index)
-        else:
+            input_file = find_input_file(path)
+            if input_file is None:
+                result.problems.append("Job %d is missing the input element and no input file was found" % job_index)
+            else:
+                input_text = _read_input_file(input_file)
+                if input_text is None:
+                    result.problems.append("Job %d: could not read input file '%s'" % (job_index, input_file))
+        if input_text is not None:
             result.inputs[job_index] = input_text
 
         basis_set = None
