@@ -15,11 +15,11 @@ from .molpro_extract import ExtractionSpec, select_records
 from .molpro_xml import Record, find_xml_files, name_molecules, parse_molpro_xml
 
 COLUMNS = (
-    "molecule", "formula", "basis_set", "functional", "command", "property", "method", "multiplicity", "symmetry",
-    "state", "value", "unit", "principal", "messages", "date", "source_path", "job_index", "step_index",
+    "molecule", "formula", "label", "basis_set", "functional", "command", "property", "method", "multiplicity",
+    "symmetry", "state", "value", "unit", "principal", "messages", "date", "source_path", "job_index", "step_index",
 )
 
-_CATEGORICAL = ("molecule", "formula", "basis_set", "functional", "command", "property", "method", "unit")
+_CATEGORICAL = ("molecule", "formula", "label", "basis_set", "functional", "command", "property", "method", "unit")
 _NULLABLE_INT = ("multiplicity", "symmetry", "state", "job_index", "step_index")
 
 
@@ -37,7 +37,7 @@ def to_dataframe(records: Iterable[Record]) -> pd.DataFrame:
     """Converts the records into a DataFrame with the columns given by COLUMNS and well-defined dtypes"""
     rows = [
         {
-            "molecule": r.molecule, "formula": r.formula, "basis_set": r.basis_set, "functional": r.functional,
+            "molecule": r.molecule, "formula": r.formula, "label": r.label, "basis_set": r.basis_set, "functional": r.functional,
             "command": r.command, "property": r.property, "method": r.method, "multiplicity": r.multiplicity,
             "symmetry": r.symmetry, "state": r.state, "value": r.value, "unit": unit_of(r.property),
             "principal": r.principal, "messages": "; ".join(r.messages), "date": r.date, "source_path": r.source_path,

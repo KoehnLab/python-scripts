@@ -57,6 +57,8 @@ class Record:
     formula: Optional[str] = None
     # ISO 8601 timestamp of the job (dc:date metadata), e.g. "2026-11-19T14:07:21+01:00"
     date: Optional[str] = None
+    # Free text that distinguishes calculations on the same molecule and basis set (see ExtractionSpec). Set by select_records()
+    label: Optional[str] = None
 
 
 @dataclass

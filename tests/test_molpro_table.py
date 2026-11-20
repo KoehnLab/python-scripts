@@ -46,6 +46,11 @@ class TestMolproTable(unittest.TestCase):
         self.assertEqual(set(dated), {pd.Timestamp("2026-11-19T13:07:21", tz="UTC")})
         self.assertTrue(self.table[self.table["molecule"] == "water"]["date"].isna().all())
 
+    def test_label_column(self):
+        self.assertTrue(self.table["label"].isna().all())
+        table = extract_table([data_dir], ExtractionSpec(label="CAS(1,1)")).table
+        self.assertEqual(set(table["label"]), {"CAS(1,1)"})
+
     def test_problems_are_collected(self):
         problems = {(os.path.basename(path), text) for path, text in self.extraction.problems}
         self.assertTrue(any(name == "invalid.xml" and text.startswith("Invalid XML") for name, text in problems))

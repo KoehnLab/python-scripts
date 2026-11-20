@@ -205,6 +205,41 @@ class TestSelection(unittest.TestCase):
         self.assertEqual([r.value for r in self.select()], [-38.0, -1.5])
         self.assertEqual(len(self.select(skip_errored_steps=False)), 4)
 
+    def test_no_label_by_default(self):
+        self.assertEqual({r.label for r in self.select()}, {None})
+
+    def test_fixed_label(self):
+        self.assertEqual({r.label for r in self.select(label="CAS(3,3)")}, {"CAS(3,3)"})
+        self.assertEqual({r.label for r in self.select(label="")}, {None})
+
+    def test_label_from_path(self):
+        self.result.path = "/data/active_space/run.1-2.xml"
+        self.assertEqual({r.label for r in self.select(label_from_path=r"/([^/]+)/[^/]+$")}, {"active_space"})
+        # Without capture group the whole match is used
+        self.assertEqual({r.label for r in self.select(label_from_path="old_data|active_space")}, {"active_space"})
+        self.assertEqual({r.label for r in self.select(label_from_path="old_data")}, {None})
+
+    def test_label_from_input(self):
+        self.assertEqual({r.label for r in self.select(label_from_input=r"^basis=(\S+)")}, {"cc-pVDZ"})
+        self.assertEqual({r.label for r in self.select(label_from_input=r"nothing")}, {None})
+        # A capture group that does not take part in the match gives no label
+        self.assertEqual({r.label for r in self.select(label_from_input=r"(nothing)?basis")}, {None})
+
+    def test_label_parts_are_combined(self):
+        self.result.path = "/data/ref/run.1-2.xml"
+        selected = self.select(label="x", label_from_path="ref", label_from_input=r"basis=(\S+)")
+        self.assertEqual({r.label for r in selected}, {"x | ref | cc-pVDZ"})
+
+    def test_label_is_per_job(self):
+        self.result.records[0].job_index = 1
+        self.result.inputs[1] = "basis=vtz"
+        labels = {(r.job_index, r.label) for r in self.select(label_from_input=r"basis=(\S+)")}
+        self.assertEqual(labels, {(0, "cc-pVDZ"), (1, "vtz")})
+
+    def test_invalid_regular_expression(self):
+        with self.assertRaises(ValueError):
+            ExtractionSpec(label_from_path="(")
+
     def test_records_are_not_modified(self):
         self.select()
         self.assertEqual(self.result.records[0].command, "DF-RHF-SCF")
