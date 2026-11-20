@@ -53,8 +53,8 @@ class TestTabularOutput(unittest.TestCase):
     def test_json_and_jsonl_roundtrip(self):
         write_table(example_table(), self.path("t.json"))
         write_table(example_table(), self.path("t.jsonl"))
-        for name, kwargs in (("t.json", {}), ("t.jsonl", {"lines": True})):
-            frame = pd.read_json(self.path(name), **kwargs)
+        for name in ("t.json", "t.jsonl"):
+            frame = pd.read_json(self.path(name), lines=name.endswith(".jsonl"))
             self.assertEqual(list(frame["molecule"]), ["a", "b"])
             self.assertEqual(list(frame["value"]), [-1.5, 0.25])
             self.assertTrue(frame["state"].isna().iloc[1])

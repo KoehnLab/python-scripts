@@ -11,6 +11,7 @@ from typing import Iterable, Optional
 from .molpro_xml import ParseResult, Record
 
 NESTED_STEP_MODES = ("none", "last", "all")
+DEFAULT_PROPERTIES = ("Energy", "Total energy", "Exc. energy")
 
 DISPERSION_PROPERTY = "dispersion correction"
 # Properties that the dispersion correction is attached to the method label of
@@ -22,7 +23,7 @@ class ExtractionSpec:
     """Describes which results to extract"""
 
     # Names of the properties to extract (case-insensitive). None means all properties.
-    properties: Optional[tuple] = ("Energy", "Total energy", "Exc. energy")
+    properties: Optional[tuple] = DEFAULT_PROPERTIES
     # Only consider properties that Molpro flags as principal
     principal_only: bool = True
     # Which steps nested in another step (e.g. the single point calculations of a geometry optimization) to consider:
@@ -71,7 +72,9 @@ def _dispersion_labels(records: Iterable[Record]) -> dict:
 
 
 def _regex_match(regex: Optional[re.Pattern], text: str) -> Optional[str]:
-    match = regex.search(text) if regex is not None else None
+    if regex is None:
+        return None
+    match = regex.search(text)
     if match is None:
         return None
     value = match.group(1) if regex.groups > 0 else match.group(0)

@@ -6,7 +6,7 @@ table, and see :mod:`koehnlab.io.tabular_output` for writing it to files.
 """
 
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from typing import Iterable, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -21,6 +21,14 @@ COLUMNS = (
 
 _CATEGORICAL = ("molecule", "formula", "label", "basis_set", "functional", "command", "property", "method", "unit")
 _NULLABLE_INT = ("multiplicity", "symmetry", "state", "job_index", "step_index")
+
+
+def _numeric(column) -> pd.Series:
+    return cast(pd.Series, pd.to_numeric(column))
+
+
+def _is_missing(value) -> bool:
+    return bool(pd.isna(value))
 
 
 def unit_of(property_name: str) -> Optional[str]:
@@ -93,7 +101,7 @@ class MergeConflictError(ValueError):
         n_keys = len(conflicts.groupby(list(KEY_COLUMNS), dropna=False, observed=True))
         lines = ["%d result(s) exist with different values (first conflicts shown):" % n_keys]
         for _, row in conflicts.head(6).iterrows():
-            key = ", ".join("%s=%s" % (c, row[c]) for c in KEY_COLUMNS if not pd.isna(row[c]))
+            key = ", ".join("%s=%s" % (c, row[c]) for c in KEY_COLUMNS if not _is_missing(row[c]))
             lines.append("  %s: value %r from %s" % (key, row["value"], row["source_path"]))
         lines.append(
             "Choose how to resolve conflicts with on_conflict / --on-conflict (%s), or distinguish the calculations with "
@@ -111,12 +119,12 @@ def conform_table(frame: pd.DataFrame) -> pd.DataFrame:
     for column in COLUMNS:
         if column not in frame.columns:
             frame[column] = None
-    frame = frame[list(COLUMNS) + [c for c in frame.columns if c not in COLUMNS]]
+    frame = frame.reindex(columns=list(COLUMNS) + [c for c in frame.columns if c not in COLUMNS])
     for column in _NULLABLE_INT:
-        frame[column] = pd.to_numeric(frame[column]).astype("Int64")
+        frame[column] = _numeric(frame[column]).astype("Int64")
     for column in _CATEGORICAL:
         frame[column] = frame[column].astype("category")
-    frame["value"] = pd.to_numeric(frame["value"]).astype("float64")
+    frame["value"] = _numeric(frame["value"]).astype("float64")
     frame["principal"] = frame["principal"].fillna(False).astype("bool")
     frame["messages"] = frame["messages"].fillna("").astype(str)
     frame["date"] = pd.to_datetime(frame["date"], utc=True, format="ISO8601")
@@ -160,7 +168,7 @@ def merge_tables(existing: pd.DataFrame, new: pd.DataFrame, on_conflict: str = "
         elif on_conflict == "error":
             conflicting.extend(rows)
         elif on_conflict == "newer":
-            winner = max(rows, key=lambda r: (dates[r] if not pd.isna(dates[r]) else pd.Timestamp.min.tz_localize("UTC"), r))
+            winner = max(rows, key=lambda r: (pd.Timestamp.min.tz_localize("UTC") if _is_missing(dates[r]) else dates[r], r))
             keep[[r for r in rows if r != winner]] = False
         elif on_conflict == "keep-existing":
             existing_rows = [r for r in rows if not is_new[r]]
@@ -173,5 +181,5 @@ def merge_tables(existing: pd.DataFrame, new: pd.DataFrame, on_conflict: str = "
         # "keep-both" keeps everything
 
     if conflicting:
-        raise MergeConflictError(conform_table(combined.loc[sorted(conflicting)]))
-    return conform_table(combined[keep].reset_index(drop=True))
+        raise MergeConflictError(conform_table(pd.DataFrame(combined.loc[sorted(conflicting)])))
+    return conform_table(pd.DataFrame(combined[keep]).reset_index(drop=True))

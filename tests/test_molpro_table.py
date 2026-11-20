@@ -32,7 +32,7 @@ class TestMolproTable(unittest.TestCase):
         self.assertEqual(list(cmrcc["symmetry"]), [1, 2])
         self.assertEqual(set(cmrcc["basis_set"]), {"cc-pVDZ"})
         self.assertEqual(set(cmrcc["unit"]), {"E_h"})
-        self.assertIn("Reference energies differ", cmrcc["messages"].iloc[0])
+        self.assertIn("Reference energies differ", list(cmrcc["messages"])[0])
 
     def test_molecules_and_basis_sets_share_one_table(self):
         self.assertEqual(set(self.table["molecule"]), {"ch", "water"})
@@ -41,10 +41,12 @@ class TestMolproTable(unittest.TestCase):
         self.assertEqual(by_molecule.shape, (2, 3))
 
     def test_date_is_utc_datetime(self):
-        self.assertEqual(str(self.table["date"].dtype), "datetime64[ns, UTC]".replace("ns", self.table["date"].dtype.unit))
-        dated = self.table[self.table["molecule"] == "ch"]["date"]
-        self.assertEqual(set(dated), {pd.Timestamp("2026-11-19T13:07:21", tz="UTC")})
-        self.assertTrue(self.table[self.table["molecule"] == "water"]["date"].isna().all())
+        dtype = self.table["date"].dtype
+        self.assertIsInstance(dtype, pd.DatetimeTZDtype)
+        self.assertEqual(str(getattr(dtype, "tz")), "UTC")
+        dates = self.table["date"]
+        self.assertEqual(set(dates[self.table["molecule"] == "ch"]), {pd.Timestamp("2026-11-19T13:07:21", tz="UTC")})
+        self.assertTrue(all(pd.isna(d) for d in dates[self.table["molecule"] == "water"]))
 
     def test_label_column(self):
         self.assertTrue(self.table["label"].isna().all())

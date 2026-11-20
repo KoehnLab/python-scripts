@@ -117,12 +117,18 @@ def _write_markdown(frame: pd.DataFrame, target) -> None:
     _write_text(text + "\n", target)
 
 
+def _to_json(frame: pd.DataFrame, **kwargs) -> str:
+    text = frame.to_json(orient="records", date_format="iso", **kwargs)
+    assert text is not None  # Only None if a path is given
+    return text
+
+
 def _write_json(frame: pd.DataFrame, target) -> None:
-    _write_text(frame.to_json(orient="records", indent=2, date_format="iso") + "\n", target)
+    _write_text(_to_json(frame, indent=2) + "\n", target)
 
 
 def _write_jsonl(frame: pd.DataFrame, target) -> None:
-    _write_text(frame.to_json(orient="records", lines=True, date_format="iso"), target)
+    _write_text(_to_json(frame, lines=True), target)
 
 
 def _write_excel(frame: pd.DataFrame, target) -> None:

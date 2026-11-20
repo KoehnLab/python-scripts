@@ -114,7 +114,7 @@ class TestExtractDataScript(unittest.TestCase):
         self.assertEqual(code, 0)
         frame = pd.read_csv(store, sep=";")
         self.assertEqual(list(frame["label"].dropna().unique()), ["variant"])
-        self.assertEqual(int(frame["label"].isna().sum()), 4)
+        self.assertEqual(frame["label"].isna().sum(), 4)
         self.assertEqual(len(frame), 8)
 
     def test_label_column_is_shown_only_if_used(self):

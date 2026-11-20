@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-from lxml import etree
+import lxml.etree as etree
 
 MOLPRO_NS = "http://www.molpro.net/schema/molpro-output"
 CML_NS = "http://www.xml-cml.org/schema"

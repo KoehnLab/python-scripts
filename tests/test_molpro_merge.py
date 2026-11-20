@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import unittest
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -8,8 +9,8 @@ from koehnlab.io.molpro_table import CONFLICT_POLICIES, KEY_COLUMNS, MergeConfli
 from koehnlab.io.molpro_xml import Record
 
 
-def record(value, state=1, molecule="a", basis_set="vdz", source="run1.xml", date="2026-01-01T00:00:00+00:00", **kwargs):
-    fields = dict(
+def record(value, state=1, molecule="a", basis_set="vdz", source="run1.xml", date: Optional[str] = "2026-01-01T00:00:00+00:00", **kwargs):
+    fields: dict[str, Any] = dict(
         source_path=source, job_index=0, step_index=0, command="CMRCC", commandset=None, parent_command=None,
         last_nested=False, property="Exc. energy", method="LR-MRCC2", value=value, raw_value=str(value), principal=True,
         state=state, symmetry=1, multiplicity=2, basis_set=basis_set, functional=None, molecule=molecule, date=date,

@@ -4,7 +4,9 @@ import argparse
 import os
 import sys
 
-from koehnlab.io.molpro_extract import ExtractionSpec, NESTED_STEP_MODES
+import pandas as pd
+
+from koehnlab.io.molpro_extract import DEFAULT_PROPERTIES, ExtractionSpec, NESTED_STEP_MODES
 from koehnlab.io.molpro_table import CONFLICT_POLICIES, conform_table, extract_table, merge_tables
 from koehnlab.io.tabular_output import available_formats, format_for_path, read_table, readable_formats, write_table
 
@@ -33,7 +35,7 @@ def parse_arguments(argv=None):
     parser.add_argument(
         "-p", "--properties", nargs="+", metavar="NAME",
         help="Names of the properties to extract (case-insensitive, default: %s). Use quotes for names with spaces."
-        % ", ".join('"%s"' % p for p in ExtractionSpec.properties),
+        % ", ".join('"%s"' % p for p in DEFAULT_PROPERTIES),
     )
     parser.add_argument("--all-properties", action="store_true", help="Extract all properties instead of a selection")
     parser.add_argument("--include-non-principal", action="store_true", help="Also extract properties not flagged as principal")
@@ -121,7 +123,7 @@ def main(argv=None):
 
     try:
         spec = ExtractionSpec(
-            properties=None if args.all_properties else (tuple(args.properties) if args.properties else ExtractionSpec.properties),
+            properties=None if args.all_properties else (tuple(args.properties) if args.properties else DEFAULT_PROPERTIES),
             principal_only=not args.include_non_principal,
             nested_steps=args.nested_steps,
             skip_errored_steps=not args.keep_errored,
@@ -132,7 +134,7 @@ def main(argv=None):
     except ValueError as e:
         sys.exit(str(e))
     extraction = extract_table(args.search_paths, spec)
-    table = extraction.table
+    table: pd.DataFrame = extraction.table
 
     if not args.quiet:
         for path, problem in extraction.problems:
@@ -155,15 +157,17 @@ def main(argv=None):
                 "several times)" % (duplicates, ", ".join(index + [args.pivot])),
                 file=sys.stderr,
             )
-        table = table.pivot_table(index=index, columns=args.pivot, values="value", aggfunc="first", observed=True).reset_index()
+        table = pd.DataFrame(
+            table.pivot_table(index=index, columns=args.pivot, values="value", aggfunc="first", observed=True).reset_index()
+        )
         table.columns.name = None
     else:
-        default_columns = [c for c in DEFAULT_COLUMNS if c != "label" or table["label"].notna().any()]
+        default_columns = [c for c in DEFAULT_COLUMNS if c != "label" or bool(table["label"].notna().any())]
         columns = list(table.columns) if args.all_columns else (args.columns or default_columns)
         unknown = [c for c in columns if c not in table.columns]
         if unknown:
             sys.exit("Unknown column(s): %s. Available columns: %s" % (", ".join(unknown), ", ".join(table.columns)))
-        table = table[columns]
+        table = pd.DataFrame(table[columns])
 
     try:
         write_table(table, args.output, args.format)
