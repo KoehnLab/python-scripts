@@ -23,6 +23,8 @@ class OutputFormat:
     write: Callable
     # Binary formats need a binary stream if the target is not a path
     binary: bool = False
+    # Called as read(path) and returning a DataFrame. None if the format cannot be read back (e.g. console tables)
+    read: Optional[Callable] = None
 
 
 _FORMATS: dict = {}
@@ -46,6 +48,22 @@ def format_for_path(path: str) -> OutputFormat:
         "Cannot infer the output format from '%s'. Use one of the suffixes %s or specify the format explicitly (%s)"
         % (path, ", ".join(s for f in _FORMATS.values() for s in f.suffixes), ", ".join(_FORMATS))
     )
+
+
+def read_table(path: str, fmt: Optional[str] = None) -> pd.DataFrame:
+    """Reads a table written by write_table. The format is given by name or inferred from the suffix of the path.
+
+    Note that formats like CSV do not store column types, so callers may have to convert the columns.
+    """
+    output_format = _FORMATS[fmt] if fmt is not None and fmt in _FORMATS else None
+    if fmt is not None and output_format is None:
+        raise ValueError("Unknown format '%s'. Available formats: %s" % (fmt, ", ".join(_FORMATS)))
+    if output_format is None:
+        output_format = format_for_path(path)
+    if output_format.read is None:
+        readable = ", ".join(f.name for f in _FORMATS.values() if f.read is not None)
+        raise ValueError("Tables in the format '%s' cannot be read back. Readable formats: %s" % (output_format.name, readable))
+    return output_format.read(path)
 
 
 def write_table(frame: pd.DataFrame, destination: Optional[str] = None, fmt: Optional[str] = None) -> None:
@@ -119,14 +137,36 @@ def _optional(function: Callable, library: str, pip_name: str) -> Callable:
     return write
 
 
+def _optional_read(function: Callable, library: str, pip_name: str) -> Callable:
+    def read(path):
+        try:
+            return function(path)
+        except ImportError as e:
+            raise ImportError("Reading this format requires the '%s' package (pip3 install %s)" % (library, pip_name)) from e
+
+    return read
+
+
 for _fmt in (
     OutputFormat("table", (".txt",), _write_table),
-    OutputFormat("csv", (".csv",), lambda frame, target: frame.to_csv(target, sep=CSV_SEPARATOR, index=False)),
-    OutputFormat("tsv", (".tsv",), lambda frame, target: frame.to_csv(target, sep="\t", index=False)),
-    OutputFormat("json", (".json",), _write_json),
-    OutputFormat("jsonl", (".jsonl", ".ndjson"), _write_jsonl),
+    OutputFormat(
+        "csv", (".csv",), lambda frame, target: frame.to_csv(target, sep=CSV_SEPARATOR, index=False),
+        read=lambda path: pd.read_csv(path, sep=CSV_SEPARATOR),
+    ),
+    OutputFormat(
+        "tsv", (".tsv",), lambda frame, target: frame.to_csv(target, sep="\t", index=False),
+        read=lambda path: pd.read_csv(path, sep="\t"),
+    ),
+    OutputFormat("json", (".json",), _write_json, read=lambda path: pd.read_json(path, orient="records")),
+    OutputFormat("jsonl", (".jsonl", ".ndjson"), _write_jsonl, read=lambda path: pd.read_json(path, orient="records", lines=True)),
     OutputFormat("markdown", (".md",), _write_markdown),
-    OutputFormat("parquet", (".parquet",), _optional(lambda f, t: f.to_parquet(t, index=False), "pyarrow", "pyarrow"), binary=True),
-    OutputFormat("excel", (".xlsx",), _optional(_write_excel, "openpyxl", "openpyxl"), binary=True),
+    OutputFormat(
+        "parquet", (".parquet",), _optional(lambda f, t: f.to_parquet(t, index=False), "pyarrow", "pyarrow"), binary=True,
+        read=_optional_read(pd.read_parquet, "pyarrow", "pyarrow"),
+    ),
+    OutputFormat(
+        "excel", (".xlsx",), _optional(_write_excel, "openpyxl", "openpyxl"), binary=True,
+        read=_optional_read(pd.read_excel, "openpyxl", "openpyxl"),
+    ),
 ):
     register_format(_fmt)

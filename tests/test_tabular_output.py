@@ -9,7 +9,7 @@ import unittest
 
 import pandas as pd
 
-from koehnlab.io.tabular_output import available_formats, format_for_path, write_table
+from koehnlab.io.tabular_output import available_formats, format_for_path, read_table, write_table
 
 
 def example_table() -> pd.DataFrame:
@@ -81,6 +81,25 @@ class TestTabularOutput(unittest.TestCase):
             write_table(example_table(), self.path("t.csv"), fmt="nope")
         with self.assertRaises(ValueError):
             format_for_path("t.unknown")
+
+    def test_read_table_roundtrip(self):
+        for name in ("t.csv", "t.tsv", "t.json", "t.jsonl"):
+            write_table(example_table(), self.path(name))
+            frame = read_table(self.path(name))
+            self.assertEqual(list(frame.columns), ["molecule", "state", "value"], name)
+            self.assertEqual(list(frame["value"]), [-1.5, 0.25], name)
+            self.assertTrue(frame["state"].isna().iloc[1], name)
+
+    def test_read_table_with_explicit_format(self):
+        write_table(example_table(), self.path("t.dat"), fmt="csv")
+        self.assertEqual(len(read_table(self.path("t.dat"), fmt="csv")), 2)
+
+    def test_unreadable_and_unknown_formats(self):
+        write_table(example_table(), self.path("t.txt"))
+        with self.assertRaises(ValueError):
+            read_table(self.path("t.txt"))
+        with self.assertRaises(ValueError):
+            read_table(self.path("t.csv"), fmt="nope")
 
     def test_registry(self):
         self.assertIn("csv", available_formats())
