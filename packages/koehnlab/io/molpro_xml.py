@@ -78,6 +78,13 @@ def _parse_scalar(raw: str) -> Optional[float]:
         return None
 
 
+def _basis_from_overall_method(overall_method: Optional[str]) -> Optional[str]:
+    """Older Molpro versions only report e.g. overall_method="DF-RKS/DEF2-TZVP" in the summary"""
+    if overall_method and "/" in overall_method:
+        return overall_method.split("/", 1)[1]
+    return None
+
+
 def _input_text(job) -> Optional[str]:
     input_elem = job.find(_q("input"))
     if input_elem is None:
@@ -136,7 +143,7 @@ def parse_molpro_xml(path: str) -> ParseResult:
                 elements = step_elements
             summary = step.find(_q("summary"))
             if summary is not None:
-                basis_set = summary.get("basis", basis_set)
+                basis_set = summary.get("basis") or _basis_from_overall_method(summary.get("overall_method")) or basis_set
                 functional = summary.get("density_functional")
 
             messages = tuple(

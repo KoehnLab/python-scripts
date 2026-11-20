@@ -61,6 +61,10 @@ class TestMolproXmlParser(unittest.TestCase):
         # step_index counts nested steps as well
         self.assertEqual([r.step_index for r in nested], [3, 4])
 
+    def test_basis_from_overall_method(self):
+        result = parse_molpro_xml(os.path.join(data_dir, "dft_dispersion.xml"))
+        self.assertEqual({r.basis_set for r in result.records}, {"DEF2-TZVP"})
+
     def test_input_is_available(self):
         text = self.result.inputs[0]
         self.assertIn("geometry=/some/path/ch.xyz", text)
@@ -77,8 +81,8 @@ class TestMolproXmlParser(unittest.TestCase):
 
     def test_find_xml_files(self):
         found = find_xml_files(data_dir)
-        self.assertEqual([os.path.basename(f) for f in found], ["invalid.xml", "multi_step.xml"])
-        self.assertEqual(find_xml_files(found[1]), [found[1]])
+        self.assertEqual([os.path.basename(f) for f in found], ["dft_dispersion.xml", "invalid.xml", "multi_step.xml"])
+        self.assertEqual(find_xml_files(found[2]), [found[2]])
 
 
 def _record(job_index=0, elements=()):

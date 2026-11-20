@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<molpro xmlns="http://www.molpro.net/schema/molpro-output" xmlns:cml="http://www.xml-cml.org/schema">
+ <job>
+  <jobstep command="DF-RKS-SCF" commandset="SCFPRO">
+   <cml:molecule>
+    <cml:atomArray>
+     <cml:atom id="a1" elementType="O" x3="0.0" y3="0.0" z3="0.0"/>
+     <cml:atom id="a2" elementType="H" x3="0.0" y3="0.7" z3="0.6"/>
+     <cml:atom id="a3" elementType="H" x3="0.0" y3="-0.7" z3="0.6"/>
+    </cml:atomArray>
+   </cml:molecule>
+   <property name="dispersion correction" method="PBE D4" stateSymmetry="1" stateNumber="1"
+     value="-0.117131420115224E-02"/>
+   <property name="Energy" method="RKS" principal="true" stateSymmetry="1" stateNumber="1" stateMultiplicity="1"
+     value="-76.4"/>
+   <summary overall_method="DF-RKS/DEF2-TZVP"/>
+  </jobstep>
+  <input>
+   <p>geometry=water.xyz</p>
+   <p>basis=def2-TZVP</p>
+   <p>{df-rks,pbe; disp,d4}</p>
+  </input>
+ </job>
+</molpro>
