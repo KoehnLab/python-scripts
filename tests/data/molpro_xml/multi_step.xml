@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<molpro xmlns="http://www.molpro.net/schema/molpro-output" xmlns:xsd="http://www.w3.org/1999/XMLSchema"
+  xmlns:cml="http://www.xml-cml.org/schema" xmlns:stm="http://www.xml-cml.org/schema" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+ <job>
+  <stm:metadataList>
+   <stm:metadata name="dc:date" content="2026-11-19T14:07:21+01:00"/>
+  </stm:metadataList>
+  <jobstep command="DF-RHF-SCF" commandset="SCFPRO">
+   <cml:molecule>
+    <cml:atomArray>
+     <cml:atom id="a1" elementType="C" x3="0.0" y3="0.0" z3="0.0"/>
+     <cml:atom id="a2" elementType="H" x3="0.0" y3="0.0" z3="1.1"/>
+    </cml:atomArray>
+   </cml:molecule>
+   <property name="Energy" method="RHF" principal="true" stateSymmetry="1" stateNumber="1" stateMultiplicity="2" value="-38.0"/>
+   <property name="Kinetic energy" method="RHF" stateMultiplicity="2" value="38.1"/>
+   <property name="Dipole moment" method="RHF" principal="true" stateSymmetry="1" stateNumber="1" stateMultiplicity="2"
+     value="0.0 0.0 0.115880219390735E-01"/>
+   <summary method="DF-RHF" basis="cc-pVDZ" overall_method="DF-RHF/cc-pVDZ"/>
+  </jobstep>
+  <jobstep command="DF-CMRCC" commandset="CMRCC">
+   <error type="Warning" location="CMRCC" message="Reference energies differ"/>
+   <property name="Total energy" method="MRCC2" principal="true" stateSymmetry="1" stateNumber="1" stateMultiplicity="2"
+     value="-38.5"/>
+   <property name="Exc. energy" method="LR-MRCC2" principal="true" stateSymmetry="2" stateNumber="1" stateMultiplicity="2"
+     value="0.25"/>
+  </jobstep>
+  <jobstep command="OPTG" commandset="OPTG">
+   <jobstep command="DF-RKS-SCF" commandset="SCFPRO">
+    <property name="Energy" method="RKS" principal="true" stateSymmetry="1" stateNumber="1" stateMultiplicity="1" value="-1.0"/>
+    <summary method="DF-RKS" basis="def2-SVP" density_functional="B3LYP" overall_method="DF-RKS/def2-SVP"/>
+   </jobstep>
+   <jobstep command="DF-RKS-SCF" commandset="SCFPRO">
+    <property name="Energy" method="RKS" principal="true" stateSymmetry="1" stateNumber="1" stateMultiplicity="1" value="-1.5"/>
+    <summary method="DF-RKS" basis="def2-SVP" density_functional="B3LYP" overall_method="DF-RKS/def2-SVP"/>
+   </jobstep>
+  </jobstep>
+  <input>
+   <p>basis=cc-pVDZ</p>
+   <p>geometry=/some/path/ch.xyz</p>
+   <include file="/some/path/ch.xyz"/>
+   <p>{df-cmrcc,method=MRCC2}</p>
+  </input>
+ </job>
+</molpro>

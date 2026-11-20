@@ -2,3 +2,5 @@ numpy
 scipy
 ase
 h5py
+pandas
+lxml
