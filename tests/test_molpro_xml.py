@@ -3,6 +3,7 @@
 import os
 import unittest
 
+from koehnlab.io.molpro_extract import ExtractionSpec, select_records
 from koehnlab.io.molpro_xml import (
     parse_molpro_xml, find_xml_files, hill_formula, xyz_names_from_input, name_from_path, name_molecules, ParseResult, Record
 )
@@ -148,6 +149,59 @@ class TestMoleculeNaming(unittest.TestCase):
         result = ParseResult(path="a.xml", inputs={0: "geometry=water.xyz", 1: "geometry=co2.xyz"}, records=records)
         name_molecules(result)
         self.assertEqual([r.molecule for r in records], ["water", "co2"])
+
+
+class TestSelection(unittest.TestCase):
+    def setUp(self):
+        self.result = parse_molpro_xml(os.path.join(data_dir, "multi_step.xml"))
+        name_molecules(self.result)
+
+    def select(self, **kwargs):
+        return select_records(self.result, ExtractionSpec(**kwargs))
+
+    def test_default_selection(self):
+        selected = self.select()
+        # RHF energy, CMRCC total and excitation energy, and only the last RKS energy of the geometry optimization
+        self.assertEqual([r.value for r in selected], [-38.0, -38.5, 0.25, -1.5])
+
+    def test_nested_steps(self):
+        self.assertEqual([r.value for r in self.select(nested_steps="none")], [-38.0, -38.5, 0.25])
+        self.assertEqual([r.value for r in self.select(nested_steps="all")], [-38.0, -38.5, 0.25, -1.0, -1.5])
+        with self.assertRaises(ValueError):
+            ExtractionSpec(nested_steps="first")
+
+    def test_property_selection(self):
+        self.assertEqual([r.property for r in self.select(properties=("exc. energy",))], ["Exc. energy"])
+        # None selects everything that is principal
+        self.assertEqual(len(self.select(properties=None)), 5)
+        self.assertEqual(len(self.select(properties=None, principal_only=False, nested_steps="all")), 7)
+
+    def test_scf_suffix_is_only_stripped_if_not_in_input(self):
+        self.assertEqual(self.select()[0].command, "DF-RHF")
+        self.result.inputs[0] += "\n{df-rhf-scf}"
+        self.assertEqual(self.select()[0].command, "DF-RHF-SCF")
+        self.assertEqual(self.select(strip_scf_suffix=False)[0].command, "DF-RHF-SCF")
+
+    def test_dispersion_correction(self):
+        result = parse_molpro_xml(os.path.join(data_dir, "dft_dispersion.xml"))
+        selected = select_records(result)
+        self.assertEqual([(r.property, r.method) for r in selected], [("Energy", "RKS+D4")])
+        selected = select_records(result, ExtractionSpec(merge_dispersion=False))
+        self.assertEqual(selected[0].method, "RKS")
+        # The correction is available as a property of its own
+        selected = select_records(result, ExtractionSpec(properties=("dispersion correction",), principal_only=False))
+        self.assertEqual(selected[0].method, "PBE D4")
+
+    def test_errored_steps_are_skipped(self):
+        for r in self.result.records:
+            if r.command == "DF-CMRCC":
+                r.errored = True
+        self.assertEqual([r.value for r in self.select()], [-38.0, -1.5])
+        self.assertEqual(len(self.select(skip_errored_steps=False)), 4)
+
+    def test_records_are_not_modified(self):
+        self.select()
+        self.assertEqual(self.result.records[0].command, "DF-RHF-SCF")
 
 
 if __name__ == "__main__":
